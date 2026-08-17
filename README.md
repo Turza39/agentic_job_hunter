@@ -1,4 +1,4 @@
-**personal AI-assisted job application automation system**, 
+# Personal AI-assisted job application automation system 
 
 # Project Goal
 

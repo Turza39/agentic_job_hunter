@@ -1,0 +1,48 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Build
+dist/
+build/
+*.egg
+
+# Docker volumes
+postgres_data/
+n8n_data/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application state
+*.db
+*.sqlite
+
+# Uploads
+uploads/
+cv-storage/uploads/
+
+# Temporary files
+tmp/
+temp/
