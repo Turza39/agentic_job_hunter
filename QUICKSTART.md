@@ -78,7 +78,7 @@ Open http://localhost:5678 in browser:
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | **n8n** | http://localhost:5678 | admin / (see .env) |
-| **PostgreSQL** | localhost:5432 | jobagent / (see .env) |
+| **PostgreSQL** | localhost:5432 / 5433 | jobagent / (see .env) |
 | **API** | http://localhost:8000 | (not yet deployed) |
 | **Dashboard** | http://localhost:3000 | (not yet deployed) |
 

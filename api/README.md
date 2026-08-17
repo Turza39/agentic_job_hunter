@@ -1,23 +1,28 @@
-# API Service
+# API Service - Phase 4: Profile & CV Management
 
-RESTful API for the Job Application Automation System.
+FastAPI-based REST API for managing user profiles and CVs in the Agentic Job Hunter system.
 
-## Purpose
+## Overview
 
 The API provides endpoints for:
 
-- Profile and CV management
-- Company and job source configuration
-- Job listings and filtering
-- Application management
-- User preferences
-- Notifications
+- ✅ User profile creation and management (Phase 4)
+- ✅ Multiple CVs per user with categories (Phase 4)
+- ✅ CV file upload handling (PDF, DOC, DOCX) (Phase 4)
+- ✅ User preferences/filtering configuration (Phase 4)
+- Company and job source configuration (Phase 5)
+- Job listings and filtering (Phase 6)
+- Application management (Phase 7-9)
+- Notifications (Phase 12)
 
 ## Technology Stack
 
-- **Framework**: FastAPI (Python)
-- **Database**: PostgreSQL
-- **Authentication**: API Keys (initially), JWT (later)
+- **Framework**: FastAPI 0.104.1 with Uvicorn
+- **Database**: PostgreSQL 16 Alpine
+- **ORM**: SQLAlchemy 2.0.23
+- **Validation**: Pydantic 2.5.0
+- **Authentication**: API Keys (planned Phase 11), JWT (later)
+- **Docker**: Multi-container orchestration
 - **Validation**: Pydantic
 
 ## Project Structure
