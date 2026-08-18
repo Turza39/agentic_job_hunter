@@ -14,9 +14,12 @@ from schemas import (
     ProfileCreate, ProfileUpdate, ProfileResponse, ProfileDetailResponse,
     CVCreate, CVUpdate, CVResponse,
     UserPreferenceCreate, UserPreferenceUpdate, UserPreferenceResponse,
+    CompanyCreate, CompanyUpdate, CompanyResponse,
+    JobSourceCreate, JobSourceUpdate, JobSourceResponse,
+    JobCreate, JobUpdate, JobResponse,
     ErrorResponse
 )
-from service import ProfileService, CVService, UserPreferenceService
+from service import ProfileService, CVService, UserPreferenceService, CompanyService, JobSourceService, JobService
 from config import settings
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -271,3 +274,214 @@ def update_preferences(
     
     prefs = UserPreferenceService.update_preferences(db, profile_id, pref_data)
     return prefs
+
+
+# ============================================================================
+# Company Endpoints
+# ============================================================================
+
+@router.post("/companies", response_model=CompanyResponse, status_code=201)
+def create_company(
+    company_data: CompanyCreate,
+    db: Session = Depends(get_db)
+):
+    """Create a new company"""
+    try:
+        company = CompanyService.create_company(db, company_data)
+        return company
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.get("/companies/{company_id}", response_model=CompanyResponse)
+def get_company(
+    company_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Get company by ID"""
+    company = CompanyService.get_company(db, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return company
+
+
+@router.get("/companies", response_model=List[CompanyResponse])
+def list_companies(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """List companies"""
+    companies = CompanyService.list_companies(db, skip=skip, limit=limit)
+    return companies
+
+
+@router.put("/companies/{company_id}", response_model=CompanyResponse)
+def update_company(
+    company_id: UUID,
+    company_data: CompanyUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update a company"""
+    try:
+        company = CompanyService.update_company(db, company_id, company_data)
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        return company
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.delete("/companies/{company_id}", status_code=204)
+def delete_company(
+    company_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Delete a company (soft delete)"""
+    if not CompanyService.delete_company(db, company_id):
+        raise HTTPException(status_code=404, detail="Company not found")
+
+
+# ============================================================================
+# Job Source Endpoints
+# ============================================================================
+
+@router.post("/job-sources", response_model=JobSourceResponse, status_code=201)
+def create_job_source(
+    source_data: JobSourceCreate,
+    db: Session = Depends(get_db)
+):
+    """Create a new job source"""
+    # Check if company exists first
+    company = CompanyService.get_company(db, source_data.company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    try:
+        source = JobSourceService.create_job_source(db, source_data)
+        return source
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/job-sources/{source_id}", response_model=JobSourceResponse)
+def get_job_source(
+    source_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Get job source by ID"""
+    source = JobSourceService.get_job_source(db, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Job source not found")
+    return source
+
+
+@router.get("/job-sources", response_model=List[JobSourceResponse])
+def list_job_sources(
+    skip: int = 0,
+    limit: int = 100,
+    is_active: Optional[bool] = None,
+    source_type: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """List job sources with optional filters"""
+    sources = JobSourceService.list_job_sources(db, skip=skip, limit=limit, is_active=is_active, source_type=source_type)
+    return sources
+
+
+@router.put("/job-sources/{source_id}", response_model=JobSourceResponse)
+def update_job_source(
+    source_id: UUID,
+    source_data: JobSourceUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update a job source"""
+    source = JobSourceService.update_job_source(db, source_id, source_data)
+    if not source:
+        raise HTTPException(status_code=404, detail="Job source not found")
+    return source
+
+
+@router.delete("/job-sources/{source_id}", status_code=204)
+def delete_job_source(
+    source_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Delete a job source"""
+    if not JobSourceService.delete_job_source(db, source_id):
+        raise HTTPException(status_code=404, detail="Job source not found")
+
+
+# ============================================================================
+# Job Endpoints
+# ============================================================================
+
+@router.post("/jobs", response_model=JobResponse, status_code=201)
+def create_job(
+    job_data: JobCreate,
+    db: Session = Depends(get_db)
+):
+    """Create a new job"""
+    # Check if company exists
+    company = CompanyService.get_company(db, job_data.company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    # Check if job source exists
+    source = JobSourceService.get_job_source(db, job_data.source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Job source not found")
+        
+    try:
+        job = JobService.create_job(db, job_data)
+        return job
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/jobs/{job_id}", response_model=JobResponse)
+def get_job(
+    job_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Get job by ID"""
+    job = JobService.get_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.get("/jobs", response_model=List[JobResponse])
+def list_jobs(
+    skip: int = 0,
+    limit: int = 100,
+    is_active: Optional[bool] = None,
+    is_duplicate: Optional[bool] = None,
+    company_id: Optional[UUID] = None,
+    db: Session = Depends(get_db)
+):
+    """List jobs with filters"""
+    jobs = JobService.list_jobs(db, skip=skip, limit=limit, is_active=is_active, is_duplicate=is_duplicate, company_id=company_id)
+    return jobs
+
+
+@router.put("/jobs/{job_id}", response_model=JobResponse)
+def update_job(
+    job_id: UUID,
+    job_data: JobUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update a job"""
+    job = JobService.update_job(db, job_id, job_data)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.delete("/jobs/{job_id}", status_code=204)
+def delete_job(
+    job_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Delete a job"""
+    if not JobService.delete_job(db, job_id):
+        raise HTTPException(status_code=404, detail="Job not found")

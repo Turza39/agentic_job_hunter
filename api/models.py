@@ -12,7 +12,7 @@ from database import Base
 class Profile(Base):
     """User profile model"""
     __tablename__ = "profiles"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     email = Column(String(255), unique=True, nullable=False)
@@ -28,15 +28,14 @@ class Profile(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    extra_data = Column(JSON, default=dict)
-    
+    extra_data = Column("metadata", JSON, default=dict)
     # Relationships
     cvs = relationship("CV", back_populates="profile", cascade="all, delete-orphan")
     preferences = relationship("UserPreference", back_populates="profile", uselist=False, cascade="all, delete-orphan")
     matches = relationship("JobMatch", back_populates="profile", cascade="all, delete-orphan")
     applications = relationship("Application", back_populates="profile", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="profile", cascade="all, delete-orphan")
-    
+
     def __repr__(self):
         return f"<Profile(id={self.id}, name={self.name}, email={self.email})>"
 
@@ -44,7 +43,7 @@ class Profile(Base):
 class CV(Base):
     """CV model for multiple CVs per user"""
     __tablename__ = "cvs"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     profile_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
     filename = Column(String(255), nullable=False)
@@ -57,12 +56,11 @@ class CV(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    extra_data = Column(JSON, default=dict)
-    
+    extra_data = Column("metadata", JSON, default=dict)
     # Relationships
     profile = relationship("Profile", back_populates="cvs")
     applications = relationship("Application", back_populates="cv")
-    
+
     def __repr__(self):
         return f"<CV(id={self.id}, filename={self.filename}, category={self.category})>"
 
@@ -70,47 +68,46 @@ class CV(Base):
 class UserPreference(Base):
     """User preferences for job filtering"""
     __tablename__ = "user_preferences"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     profile_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, unique=True)
-    
+
     # Location preferences
     preferred_locations = Column(JSON, default=list)
     exclude_locations = Column(JSON, default=list)
     allow_remote = Column(Boolean, default=True)
     allow_hybrid = Column(Boolean, default=True)
     allow_onsite = Column(Boolean, default=True)
-    
+
     # Experience preferences
     min_experience_years = Column(Integer, default=0)
     max_experience_years = Column(Integer, default=100)
-    
+
     # Job type preferences
     preferred_job_types = Column(JSON, default=lambda: ["Full-time"])
-    
+
     # Salary preferences
     min_salary = Column(Integer)
     max_salary = Column(Integer)
-    
+
     # Keywords
     required_keywords = Column(JSON, default=list)
     excluded_keywords = Column(JSON, default=list)
-    
+
     # Matching threshold
     min_match_score = Column(Integer, default=70)
-    
+
     # Companies
     preferred_companies = Column(JSON, default=list)
     excluded_companies = Column(JSON, default=list)
-    
+
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    extra_data = Column(JSON, default=dict)
-    
+    extra_data = Column("metadata", JSON, default=dict)
     # Relationships
     profile = relationship("Profile", back_populates="preferences")
-    
+
     def __repr__(self):
         return f"<UserPreference(profile_id={self.profile_id})>"
 
@@ -122,9 +119,9 @@ from sqlalchemy.orm import relationship as orm_relationship
 class JobMatch(Base):
     """Job match model (placeholder for relationships)"""
     __tablename__ = "job_matches"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    job_id = Column(UUID(as_uuid=True), nullable=False)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
     profile_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
     selected_cv_id = Column(UUID(as_uuid=True), ForeignKey("cvs.id", ondelete="SET NULL"))
     match_score = Column(Integer)
@@ -140,18 +137,21 @@ class JobMatch(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    extra_data = Column(JSON, default=dict)
-    
+    extra_data = Column("metadata", JSON, default=dict)
+
+
     profile = orm_relationship("Profile", back_populates="matches")
-    
+    job = orm_relationship("Job", back_populates="matches")
+    applications = orm_relationship("Application", back_populates="job_match")
+
 
 class Application(Base):
     """Application model (placeholder)"""
     __tablename__ = "applications"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    job_match_id = Column(UUID(as_uuid=True), nullable=False)
-    job_id = Column(UUID(as_uuid=True), nullable=False)
+    job_match_id = Column(UUID(as_uuid=True), ForeignKey("job_matches.id", ondelete="CASCADE"), nullable=False)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
     profile_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
     cv_id = Column(UUID(as_uuid=True), ForeignKey("cvs.id", ondelete="RESTRICT"), nullable=False)
     status = Column(String(100), default="DISCOVERED")
@@ -171,16 +171,19 @@ class Application(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    extra_data = Column(JSON, default=dict)
-    
+    extra_data = Column("metadata", JSON, default=dict)
+
+
     profile = orm_relationship("Profile", back_populates="applications")
     cv = orm_relationship("CV", back_populates="applications")
+    job = orm_relationship("Job", back_populates="applications")
+    job_match = orm_relationship("JobMatch", back_populates="applications")
 
 
 class Notification(Base):
     """Notification model (placeholder)"""
     __tablename__ = "notifications"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     profile_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
     job_match_id = Column(UUID(as_uuid=True))
@@ -200,6 +203,86 @@ class Notification(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    extra_data = Column(JSON, default=dict)
-    
+    extra_data = Column("metadata", JSON, default=dict)
+
+
     profile = orm_relationship("Profile", back_populates="notifications")
+
+
+class Company(Base):
+    """Company model"""
+    __tablename__ = "companies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), unique=True, nullable=False)
+    website = Column(String(500))
+    career_page_url = Column(String(500))
+    logo_url = Column(String(500))
+    description = Column(Text)
+    industry = Column(String(100))
+    country = Column(String(100))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    extra_data = Column("metadata", JSON, default=dict)
+    # Relationships
+    job_sources = relationship("JobSource", back_populates="company", cascade="all, delete-orphan")
+    jobs = relationship("Job", back_populates="company", cascade="all, delete-orphan")
+
+
+class JobSource(Base):
+    """Job source model"""
+    __tablename__ = "job_sources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    source_type = Column(String(50), nullable=False)  # 'career_page', 'bdjobs', 'email', 'linkedin'
+    source_url = Column(String(500))
+    api_endpoint = Column(String(500))
+    extraction_strategy = Column(String(100))        # 'html', 'json', 'rss', 'api', 'sitemap'
+    auth_method = Column(String(50), default="none")  # 'none', 'api_key', 'oauth'
+    auth_config = Column(JSON, default=dict)
+    polling_interval_hours = Column(Integer, default=24)
+    last_polled_at = Column(DateTime)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    extra_data = Column("metadata", JSON, default=dict)
+    # Relationships
+    company = relationship("Company", back_populates="job_sources")
+    jobs = relationship("Job", back_populates="source", cascade="all, delete-orphan")
+
+
+class Job(Base):
+    """Job model"""
+    __tablename__ = "jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    source_id = Column(UUID(as_uuid=True), ForeignKey("job_sources.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=False)
+    location = Column(String(255))
+    job_type = Column(String(50))
+    remote_type = Column(String(50))
+    salary_min = Column(Integer)
+    salary_max = Column(Integer)
+    currency = Column(String(10), default="USD")
+    experience_required = Column(Integer)
+    experience_level = Column(String(50))
+    requirements = Column(JSON, default=list)
+    nice_to_have = Column(JSON, default=list)
+    application_url = Column(String(500))
+    posted_at = Column(DateTime)
+    expires_at = Column(DateTime)
+    normalized_hash = Column(String(64))
+    is_duplicate = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    extra_data = Column("metadata", JSON, default=dict)
+    # Relationships
+    company = relationship("Company", back_populates="jobs")
+    source = relationship("JobSource", back_populates="jobs")
+    matches = relationship("JobMatch", back_populates="job", cascade="all, delete-orphan")
+    applications = relationship("Application", back_populates="job", cascade="all, delete-orphan")

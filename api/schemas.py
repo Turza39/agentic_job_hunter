@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation
 """
-from pydantic import BaseModel, EmailStr, Field, HttpUrl
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, AliasChoices
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from uuid import UUID
@@ -48,7 +48,7 @@ class ProfileResponse(ProfileBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    extra_data: Dict[str, Any] = Field(default_factory=dict, serialization_alias="metadata")
     
     class Config:
         from_attributes = True
@@ -91,7 +91,7 @@ class CVResponse(CVBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    extra_data: Dict[str, Any] = Field(default_factory=dict, serialization_alias="metadata")
     
     class Config:
         from_attributes = True
@@ -153,7 +153,7 @@ class UserPreferenceResponse(UserPreferenceBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    extra_data: Dict[str, Any] = Field(default_factory=dict, serialization_alias="metadata")
     
     class Config:
         from_attributes = True
@@ -173,6 +173,130 @@ class HealthResponse(BaseModel):
     status: str
     database: str
     version: str
+
+
+# Company Schemas
+class CompanyBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    website: Optional[HttpUrl] = None
+    career_page_url: Optional[HttpUrl] = None
+    logo_url: Optional[HttpUrl] = None
+    description: Optional[str] = None
+    industry: Optional[str] = Field(None, max_length=100)
+    country: Optional[str] = Field(None, max_length=100)
+
+class CompanyCreate(CompanyBase):
+    pass
+
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    website: Optional[HttpUrl] = None
+    career_page_url: Optional[HttpUrl] = None
+    logo_url: Optional[HttpUrl] = None
+    description: Optional[str] = None
+    industry: Optional[str] = Field(None, max_length=100)
+    country: Optional[str] = Field(None, max_length=100)
+    is_active: Optional[bool] = None
+
+class CompanyResponse(CompanyBase):
+    id: UUID
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    extra_data: Dict[str, Any] = Field(default_factory=dict, serialization_alias="metadata")
+    
+    class Config:
+        from_attributes = True
+
+
+# Job Source Schemas
+class JobSourceBase(BaseModel):
+    company_id: UUID
+    source_type: str = Field(..., max_length=50) # 'career_page', 'bdjobs', 'email', 'linkedin'
+    source_url: Optional[HttpUrl] = None
+    api_endpoint: Optional[HttpUrl] = None
+    extraction_strategy: Optional[str] = Field(None, max_length=100) # 'html', 'json', 'rss', 'api', 'sitemap'
+    auth_method: str = Field("none", max_length=50)
+    auth_config: Dict[str, Any] = Field(default_factory=dict)
+    polling_interval_hours: int = Field(24, ge=1)
+
+class JobSourceCreate(JobSourceBase):
+    pass
+
+class JobSourceUpdate(BaseModel):
+    source_type: Optional[str] = Field(None, max_length=50)
+    source_url: Optional[HttpUrl] = None
+    api_endpoint: Optional[HttpUrl] = None
+    extraction_strategy: Optional[str] = Field(None, max_length=100)
+    auth_method: Optional[str] = Field(None, max_length=50)
+    auth_config: Optional[Dict[str, Any]] = None
+    polling_interval_hours: Optional[int] = Field(None, ge=1)
+    is_active: Optional[bool] = None
+
+class JobSourceResponse(JobSourceBase):
+    id: UUID
+    last_polled_at: Optional[datetime] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    extra_data: Dict[str, Any] = Field(default_factory=dict, serialization_alias="metadata")
+    
+    class Config:
+        from_attributes = True
+
+
+# Job Schemas
+class JobBase(BaseModel):
+    company_id: UUID
+    source_id: UUID
+    title: str = Field(..., min_length=1, max_length=255)
+    description: str
+    location: Optional[str] = Field(None, max_length=255)
+    job_type: Optional[str] = Field(None, max_length=50)
+    remote_type: Optional[str] = Field(None, max_length=50)
+    salary_min: Optional[int] = Field(None, ge=0)
+    salary_max: Optional[int] = Field(None, ge=0)
+    currency: str = Field("USD", max_length=10)
+    experience_required: Optional[int] = Field(None, ge=0)
+    experience_level: Optional[str] = Field(None, max_length=50)
+    requirements: Optional[List[str]] = Field(default_factory=list)
+    nice_to_have: Optional[List[str]] = Field(default_factory=list)
+    application_url: Optional[HttpUrl] = None
+    posted_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+
+class JobCreate(JobBase):
+    pass
+
+class JobUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    location: Optional[str] = Field(None, max_length=255)
+    job_type: Optional[str] = Field(None, max_length=50)
+    remote_type: Optional[str] = Field(None, max_length=50)
+    salary_min: Optional[int] = Field(None, ge=0)
+    salary_max: Optional[int] = Field(None, ge=0)
+    currency: Optional[str] = Field(None, max_length=10)
+    experience_required: Optional[int] = Field(None, ge=0)
+    experience_level: Optional[str] = Field(None, max_length=50)
+    requirements: Optional[List[str]] = None
+    nice_to_have: Optional[List[str]] = None
+    application_url: Optional[HttpUrl] = None
+    posted_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    is_active: Optional[bool] = None
+
+class JobResponse(JobBase):
+    id: UUID
+    normalized_hash: Optional[str] = None
+    is_duplicate: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    extra_data: Dict[str, Any] = Field(default_factory=dict, serialization_alias="metadata")
+    
+    class Config:
+        from_attributes = True
 
 
 # Update forward references

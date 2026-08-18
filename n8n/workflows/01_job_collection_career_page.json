@@ -1,0 +1,266 @@
+{
+  "name": "01_job_collection_career_page",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 * * *"
+            }
+          ]
+        }
+      },
+      "id": "c62fb380-4966-419b-a7e8-b7eb4fa6f9a0",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        380,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.API_URL || 'http://api:8000'}}/api/job-sources",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "is_active",
+              "value": "true"
+            },
+            {
+              "name": "source_type",
+              "value": "career_page"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e84e5541-2a62-4467-bc18-472ef55f75e7",
+      "name": "Get Career Page Sources",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        600,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "d04e6c98-466d-4952-b13c-d3c2fa58fa99",
+      "name": "Loop Through Sources",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [
+        820,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "source_id",
+              "stringValue": "={{$json.id}}"
+            },
+            {
+              "name": "company_id",
+              "stringValue": "={{$json.company_id}}"
+            },
+            {
+              "name": "source_url",
+              "stringValue": "={{$json.source_url}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d74a7b74-1234-4567-890a-123456789abc",
+      "name": "Preserve Source Metadata",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.source_url}}",
+        "options": {
+          "responseFormat": "text"
+        }
+      },
+      "id": "8bb3dfa2-3f19-4cb5-aa5f-62e92c23f1a0",
+      "name": "Fetch Career Page HTML",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1260,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $('Fetch Career Page HTML').item.json.data || '';\nconst source = $('Preserve Source Metadata').item.json;\nconst companyId = source.company_id;\nconst sourceId = source.source_id;\nconst sourceUrl = source.source_url;\n\nconst extractedJobs = [];\n\n// 1. JSON-LD parsing\nconst jsonLdRegex = /<script\\b[^>]*type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/gi;\nlet match;\nwhile ((match = jsonLdRegex.exec(html)) !== null) {\n  try {\n    const rawJson = match[1].trim();\n    const data = JSON.parse(rawJson);\n    \n    const processObject = (obj) => {\n      if (obj && (obj['@type'] === 'JobPosting' || obj['type'] === 'JobPosting')) {\n        const title = obj.title || obj.name;\n        const description = obj.description || '';\n        let location = '';\n        if (obj.jobLocation) {\n          if (typeof obj.jobLocation === 'string') {\n            location = obj.jobLocation;\n          } else if (obj.jobLocation.address) {\n            const addr = obj.jobLocation.address;\n            location = [addr.streetAddress, addr.addressLocality, addr.addressRegion, addr.postalCode, addr.addressCountry]\n              .filter(Boolean)\n              .join(', ');\n          }\n        }\n        const appUrl = obj.url || sourceUrl;\n        \n        if (title) {\n          extractedJobs.push({\n            company_id: companyId,\n            source_id: sourceId,\n            title: title.trim(),\n            description: description.trim() || `Open position for ${title.trim()}. See details at ${sourceUrl}`,\n            location: location.trim() || 'Remote / Unspecified',\n            job_type: \"Full-time\",\n            remote_type: location.toLowerCase().includes('remote') ? 'remote' : 'hybrid',\n            currency: \"USD\",\n            application_url: appUrl.trim(),\n            is_valid: true\n          });\n        }\n      }\n    };\n    \n    if (Array.isArray(data)) {\n      data.forEach(processObject);\n    } else if (data['@graph'] && Array.isArray(data['@graph'])) {\n      data['@graph'].forEach(processObject);\n    } else {\n      processObject(data);\n    }\n  } catch (e) {\n    // Ignore invalid JSON-LD blocks\n  }\n}\n\n// 2. HTML parsing fallback\nif (extractedJobs.length === 0) {\n  const blockRegex = /<(div|li|article|section)\\b[^>]*class=[\"'][^\"']*(?:job|vacancy|position|posting|listing|opportunity|career)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/\\1>/gi;\n  \n  let blockMatch;\n  while ((blockMatch = blockRegex.exec(html)) !== null) {\n    const blockContent = blockMatch[2];\n    \n    let title = '';\n    const hRegex = /<h[1-4]\\b[^>]*>([\\s\\S]*?)<\\/h[1-4]>/i;\n    const hMatch = hRegex.exec(blockContent);\n    if (hMatch) {\n      title = hMatch[1].replace(/<[^>]*>/g, '').trim();\n    } else {\n      const classTitleRegex = /<[^>]*class=[\"'][^\"']*(?:title|position|role|job-name)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/[^>]+>/i;\n      const classTitleMatch = classTitleRegex.exec(blockContent);\n      if (classTitleMatch) {\n        title = classTitleMatch[1].replace(/<[^>]*>/g, '').trim();\n      }\n    }\n    \n    let location = '';\n    const locRegex = /<[^>]*class=[\"'][^\"']*(?:location|city|remote|country|place|region)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/[^>]+>/i;\n    const locMatch = locRegex.exec(blockContent);\n    if (locMatch) {\n      location = locMatch[1].replace(/<[^>]*>/g, '').trim();\n    }\n    \n    let description = '';\n    const descRegex = /<[^>]*class=[\"'][^\"']*(?:desc|summary|detail|content|body)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/[^>]+>/i;\n    const descMatch = descRegex.exec(blockContent);\n    if (descMatch) {\n      description = descMatch[1].replace(/<[^>]*>/g, '').trim();\n    }\n    \n    let appUrl = '';\n    const linkRegex = /<a\\b[^>]*href=[\"']([^\"']+)[\"'][^>]*>([\\s\\S]*?)<\\/a>/gi;\n    let linkMatch;\n    let bestLink = '';\n    while ((linkMatch = linkRegex.exec(blockContent)) !== null) {\n      const href = linkMatch[1];\n      const text = linkMatch[2].replace(/<[^>]*>/g, '').toLowerCase();\n      if (text.includes('apply') || text.includes('view') || text.includes('detail') || href.includes('job') || href.includes('apply')) {\n        bestLink = href;\n        break;\n      }\n      if (!bestLink) {\n        bestLink = href;\n      }\n    }\n    \n    if (bestLink) {\n      if (bestLink.startsWith('/')) {\n        try {\n          const urlObj = new URL(sourceUrl);\n          appUrl = urlObj.origin + bestLink;\n        } catch (e) {\n          appUrl = sourceUrl;\n        }\n      } else if (!bestLink.startsWith('http')) {\n        appUrl = sourceUrl;\n      } else {\n        appUrl = bestLink;\n      }\n    } else {\n      appUrl = sourceUrl;\n    }\n    \n    if (title && title.length > 2 && title.length < 150) {\n      extractedJobs.push({\n        company_id: companyId,\n        source_id: sourceId,\n        title: title,\n        location: location || 'Remote / Unspecified',\n        description: description || `Open position for ${title}. See details at ${sourceUrl}`,\n        job_type: \"Full-time\",\n        remote_type: (location.toLowerCase().includes('remote') || title.toLowerCase().includes('remote')) ? 'remote' : 'hybrid',\n        currency: \"USD\",\n        application_url: appUrl,\n        is_valid: true\n      });\n    }\n  }\n}\n\n// 3. Output check\nif (extractedJobs.length === 0) {\n  return [{\n    json: {\n      company_id: companyId,\n      source_id: sourceId,\n      source_url: sourceUrl,\n      is_valid: false,\n      status: \"no_jobs_extracted\",\n      reason: \"Could not parse any jobs from the career page\"\n    }\n  }];\n}\n\nreturn extractedJobs.map(job => ({ json: job }));"
+      },
+      "id": "e0bfa9d8-9db8-40a2-aa5f-e0c25a072049",
+      "name": "Parse & Normalize HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.is_valid}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "f5d0e2e2-9b2f-488d-bbcc-04f762a1c02b",
+      "name": "Check If Jobs Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1700,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.API_URL || 'http://api:8000'}}/api/jobs",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"company_id\": \"{{$json.company_id}}\",\n  \"source_id\": \"{{$json.source_id}}\",\n  \"title\": \"{{$json.title}}\",\n  \"description\": \"{{$json.description}}\",\n  \"location\": \"{{$json.location}}\",\n  \"job_type\": \"{{$json.job_type}}\",\n  \"remote_type\": \"{{$json.remote_type}}\",\n  \"currency\": \"{{$json.currency}}\",\n  \"application_url\": \"{{$json.application_url}}\"\n}",
+        "options": {}
+      },
+      "id": "8bb3dfa2-3f19-4cb5-aa5f-62e92c23f1a9",
+      "name": "Submit Job to API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1920,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Career Page Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Career Page Sources": {
+      "main": [
+        [
+          {
+            "node": "Loop Through Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Through Sources": {
+      "main": [
+        [
+          {
+            "node": "Preserve Source Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preserve Source Metadata": {
+      "main": [
+        [
+          {
+            "node": "Fetch Career Page HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Career Page HTML": {
+      "main": [
+        [
+          {
+            "node": "Parse & Normalize HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Normalize HTML": {
+      "main": [
+        [
+          {
+            "node": "Check If Jobs Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Jobs Found": {
+      "main": [
+        [
+          {
+            "node": "Submit Job to API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Through Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Job to API": {
+      "main": [
+        [
+          {
+            "node": "Loop Through Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "f7d79b9a-41e7-497b-b5ee-01f654b9d0a6",
+  "id": "1",
+  "meta": {
+    "templateId": "career-page-collector"
+  }
+}

@@ -125,11 +125,11 @@ def test_create_cv(profile_id):
     print("=" * 60)
     
     # Create a sample PDF file for testing
-    sample_cv_path = Path("sample_resume.txt")
+    sample_cv_path = Path("sample_resume.pdf")
     sample_cv_path.write_text("This is a sample resume for testing.\n" * 20)
     
     with open(sample_cv_path, "rb") as f:
-        files = {"file": (f.name, f, "text/plain")}
+        files = {"file": (f.name, f, "application/pdf")}
         data = {
             "category": "Backend",
             "target_roles": "Senior Engineer,Tech Lead",
@@ -312,6 +312,11 @@ def run_all_tests():
         test_get_preferences(profile_id)
         test_update_preferences(profile_id)
         
+        # Job system tests
+        company_id = test_company_endpoints()
+        source_id = test_job_source_endpoints(company_id)
+        test_job_endpoints(company_id, source_id)
+
         # Cleanup
         test_delete_cv(cv_id)
         test_delete_profile(profile_id)
@@ -328,6 +333,138 @@ def run_all_tests():
         print("Make sure the API is running:")
         print("  docker compose up api")
         raise
+
+
+def test_company_endpoints():
+    print("\n" + "=" * 60)
+    print("TEST: Company Endpoints")
+    print("=" * 60)
+    
+    # Create Company
+    company_data = {
+        "name": f"Test Company {time.time()}",
+        "website": "https://testcompany.com",
+        "career_page_url": "https://testcompany.com/careers"
+    }
+    response = requests.post(f"{BASE_URL}/api/companies", json=company_data)
+    assert response.status_code == 201
+    company = response.json()
+    company_id = company["id"]
+    print(f"✅ Created Company: {company_id}")
+    
+    # Get Company
+    response = requests.get(f"{BASE_URL}/api/companies/{company_id}")
+    assert response.status_code == 200
+    assert response.json()["name"] == company_data["name"]
+    
+    # List Companies
+    response = requests.get(f"{BASE_URL}/api/companies")
+    assert response.status_code == 200
+    assert len(response.json()) > 0
+    
+    # Update Company
+    update_data = {"description": "Updated Description"}
+    response = requests.put(f"{BASE_URL}/api/companies/{company_id}", json=update_data)
+    assert response.status_code == 200
+    
+    return company_id
+
+
+def test_job_source_endpoints(company_id):
+    print("\n" + "=" * 60)
+    print("TEST: Job Source Endpoints")
+    print("=" * 60)
+    
+    # Create Job Source
+    source_data = {
+        "company_id": company_id,
+        "source_type": "career_page",
+        "source_url": "https://testcompany.com/careers/engineering",
+        "extraction_strategy": "html"
+    }
+    response = requests.post(f"{BASE_URL}/api/job-sources", json=source_data)
+    assert response.status_code == 201
+    source = response.json()
+    source_id = source["id"]
+    print(f"✅ Created Job Source: {source_id}")
+    
+    # Get Job Source
+    response = requests.get(f"{BASE_URL}/api/job-sources/{source_id}")
+    assert response.status_code == 200
+    
+    # List Job Sources
+    response = requests.get(f"{BASE_URL}/api/job-sources?source_type=career_page")
+    assert response.status_code == 200
+    assert len(response.json()) > 0
+    
+    # Update Job Source
+    update_data = {"polling_interval_hours": 12}
+    response = requests.put(f"{BASE_URL}/api/job-sources/{source_id}", json=update_data)
+    assert response.status_code == 200
+    assert response.json()["polling_interval_hours"] == 12
+    
+    return source_id
+
+
+def test_job_endpoints(company_id, source_id):
+    print("\n" + "=" * 60)
+    print("TEST: Job Endpoints")
+    print("=" * 60)
+    
+    # Create Job
+    job_data = {
+        "company_id": company_id,
+        "source_id": source_id,
+        "title": "Backend Python Developer",
+        "description": "Develop APIs using Python and FastAPI.",
+        "location": "San Francisco, CA",
+        "job_type": "Full-time",
+        "remote_type": "remote",
+        "application_url": "https://testcompany.com/careers/apply/1"
+    }
+    response = requests.post(f"{BASE_URL}/api/jobs", json=job_data)
+    assert response.status_code == 201
+    job = response.json()
+    job_id = job["id"]
+    print(f"✅ Created Job: {job_id}")
+    
+    # Test deduplication hash generation
+    assert job["normalized_hash"] is not None
+    print(f"✅ Job hash generated: {job['normalized_hash']}")
+    
+    # Try inserting duplicate job
+    response = requests.post(f"{BASE_URL}/api/jobs", json=job_data)
+    assert response.status_code == 201
+    assert response.json()["id"] == job_id
+    print("✅ Duplicate job handled correctly (existing returned)")
+    
+    # Get Job
+    response = requests.get(f"{BASE_URL}/api/jobs/{job_id}")
+    assert response.status_code == 200
+    
+    # List Jobs
+    response = requests.get(f"{BASE_URL}/api/jobs?company_id={company_id}")
+    assert response.status_code == 200
+    assert len(response.json()) > 0
+    
+    # Update Job
+    update_data = {"salary_min": 100000}
+    response = requests.put(f"{BASE_URL}/api/jobs/{job_id}", json=update_data)
+    assert response.status_code == 200
+    assert response.json()["salary_min"] == 100000
+    
+    # Cleanup / Delete Job
+    response = requests.delete(f"{BASE_URL}/api/jobs/{job_id}")
+    assert response.status_code == 204
+    
+    # Cleanup / Delete Job Source
+    response = requests.delete(f"{BASE_URL}/api/job-sources/{source_id}")
+    assert response.status_code == 204
+    
+    # Cleanup / Delete Company
+    response = requests.delete(f"{BASE_URL}/api/companies/{company_id}")
+    assert response.status_code == 204
+    print("✅ Job system test clean up complete")
 
 
 if __name__ == "__main__":
