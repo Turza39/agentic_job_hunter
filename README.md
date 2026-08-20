@@ -9,10 +9,11 @@
 | 2 | Docker Environment | ✅ Complete |
 | 3 | PostgreSQL Database | ✅ Complete |
 | 4 | Profile & CV Management API | ✅ Complete |
-| 5 | Job Source System | ⏳ Pending |
-| 6 | Career Page Collector | ⏳ Pending |
+| 5 | Job Source System | ✅ Complete |
+| 6 | Career Page Collector | ✅ Complete |
 | 7 | Bdjobs Collector | ⏳ Pending |
-| 8-13 | Additional Phases | ⏳ Pending |
+| 8 | Deduplication | ✅ Complete |
+| 9-13 | Additional Phases | ⏳ Pending |
 | 14 | Full Integration & Testing | ⏳ Pending |
 
 ### Phase 4 Deliverables
