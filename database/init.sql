@@ -69,24 +69,6 @@ CREATE TABLE companies (
     metadata JSONB DEFAULT '{}'
 );
 
--- Job sources (abstract the source type)
-CREATE TABLE job_sources (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    source_type VARCHAR(50) NOT NULL,       -- 'career_page', 'bdjobs', 'email', 'linkedin'
-    source_url VARCHAR(500),                 -- URL to fetch jobs from
-    api_endpoint VARCHAR(500),               -- If applicable
-    extraction_strategy VARCHAR(100),        -- 'html', 'json', 'rss', 'api', 'sitemap'
-    auth_method VARCHAR(50),                 -- 'none', 'api_key', 'oauth'
-    auth_config JSONB DEFAULT '{}',          -- Store encrypted auth details
-    polling_interval_hours INT DEFAULT 24,  -- How often to check for new jobs
-    last_polled_at TIMESTAMP,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    metadata JSONB DEFAULT '{}'
-);
-
 -- ============================================================================
 -- JOB MANAGEMENT (Phase 8, 9)
 -- ============================================================================
@@ -95,7 +77,6 @@ CREATE TABLE job_sources (
 CREATE TABLE jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    source_id UUID NOT NULL REFERENCES job_sources(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
     location VARCHAR(255),
@@ -397,7 +378,6 @@ CREATE TABLE audit_trail (
 
 -- Jobs
 CREATE INDEX idx_jobs_company_id ON jobs(company_id);
-CREATE INDEX idx_jobs_source_id ON jobs(source_id);
 CREATE INDEX idx_jobs_normalized_hash ON jobs(normalized_hash);
 CREATE INDEX idx_jobs_is_active ON jobs(is_active);
 CREATE INDEX idx_jobs_created_at ON jobs(created_at DESC);

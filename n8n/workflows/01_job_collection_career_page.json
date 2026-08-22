@@ -12,40 +12,47 @@
           ]
         }
       },
-      "id": "c62fb380-4966-419b-a7e8-b7eb4fa6f9a0",
+      "id": "c9ce7ccc-62cf-4b65-9c2e-72eb03e3ba66",
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
       "position": [
-        380,
-        240
+        -1760,
+        112
       ]
     },
     {
       "parameters": {
-        "url": "={{$env.API_URL || 'http://api:8000'}}/api/job-sources",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "is_active",
-              "value": "true"
-            },
-            {
-              "name": "source_type",
-              "value": "career_page"
-            }
-          ]
-        },
+        "url": "http://api:8000/api/companies",
         "options": {}
       },
-      "id": "e84e5541-2a62-4467-bc18-472ef55f75e7",
-      "name": "Get Career Page Sources",
+      "id": "9792dd76-6ca0-43ae-8555-fa23962cd209",
+      "name": "Get Active Companies",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        600,
-        240
+        -1536,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !!$json.career_page_url }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "1444ec73-54f7-4df0-a1d9-1b1b997f29d1",
+      "name": "Has Career Page",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -1328,
+        112
       ]
     },
     {
@@ -53,71 +60,13 @@
         "batchSize": 1,
         "options": {}
       },
-      "id": "d04e6c98-466d-4952-b13c-d3c2fa58fa99",
-      "name": "Loop Through Sources",
+      "id": "b581aecf-f239-45ee-a80e-c5978f54a5f1",
+      "name": "Loop Through Companies",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 1,
       "position": [
-        820,
-        240
-      ]
-    },
-    {
-      "parameters": {
-        "fields": {
-          "values": [
-            {
-              "name": "source_id",
-              "stringValue": "={{$json.id}}"
-            },
-            {
-              "name": "company_id",
-              "stringValue": "={{$json.company_id}}"
-            },
-            {
-              "name": "source_url",
-              "stringValue": "={{$json.source_url}}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "d74a7b74-1234-4567-890a-123456789abc",
-      "name": "Preserve Source Metadata",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 1,
-      "position": [
-        1040,
-        240
-      ]
-    },
-    {
-      "parameters": {
-        "url": "={{$json.source_url}}",
-        "options": {
-          "responseFormat": "text"
-        }
-      },
-      "id": "8bb3dfa2-3f19-4cb5-aa5f-62e92c23f1a0",
-      "name": "Fetch Career Page HTML",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1260,
-        240
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const html = $('Fetch Career Page HTML').item.json.data || '';\nconst source = $('Preserve Source Metadata').item.json;\nconst companyId = source.company_id;\nconst sourceId = source.source_id;\nconst sourceUrl = source.source_url;\n\nconst extractedJobs = [];\n\n// 1. JSON-LD parsing\nconst jsonLdRegex = /<script\\b[^>]*type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/gi;\nlet match;\nwhile ((match = jsonLdRegex.exec(html)) !== null) {\n  try {\n    const rawJson = match[1].trim();\n    const data = JSON.parse(rawJson);\n    \n    const processObject = (obj) => {\n      if (obj && (obj['@type'] === 'JobPosting' || obj['type'] === 'JobPosting')) {\n        const title = obj.title || obj.name;\n        const description = obj.description || '';\n        let location = '';\n        if (obj.jobLocation) {\n          if (typeof obj.jobLocation === 'string') {\n            location = obj.jobLocation;\n          } else if (obj.jobLocation.address) {\n            const addr = obj.jobLocation.address;\n            location = [addr.streetAddress, addr.addressLocality, addr.addressRegion, addr.postalCode, addr.addressCountry]\n              .filter(Boolean)\n              .join(', ');\n          }\n        }\n        const appUrl = obj.url || sourceUrl;\n        \n        if (title) {\n          extractedJobs.push({\n            company_id: companyId,\n            source_id: sourceId,\n            title: title.trim(),\n            description: description.trim() || `Open position for ${title.trim()}. See details at ${sourceUrl}`,\n            location: location.trim() || 'Remote / Unspecified',\n            job_type: \"Full-time\",\n            remote_type: location.toLowerCase().includes('remote') ? 'remote' : 'hybrid',\n            currency: \"USD\",\n            application_url: appUrl.trim(),\n            is_valid: true\n          });\n        }\n      }\n    };\n    \n    if (Array.isArray(data)) {\n      data.forEach(processObject);\n    } else if (data['@graph'] && Array.isArray(data['@graph'])) {\n      data['@graph'].forEach(processObject);\n    } else {\n      processObject(data);\n    }\n  } catch (e) {\n    // Ignore invalid JSON-LD blocks\n  }\n}\n\n// 2. HTML parsing fallback\nif (extractedJobs.length === 0) {\n  const blockRegex = /<(div|li|article|section)\\b[^>]*class=[\"'][^\"']*(?:job|vacancy|position|posting|listing|opportunity|career)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/\\1>/gi;\n  \n  let blockMatch;\n  while ((blockMatch = blockRegex.exec(html)) !== null) {\n    const blockContent = blockMatch[2];\n    \n    let title = '';\n    const hRegex = /<h[1-4]\\b[^>]*>([\\s\\S]*?)<\\/h[1-4]>/i;\n    const hMatch = hRegex.exec(blockContent);\n    if (hMatch) {\n      title = hMatch[1].replace(/<[^>]*>/g, '').trim();\n    } else {\n      const classTitleRegex = /<[^>]*class=[\"'][^\"']*(?:title|position|role|job-name)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/[^>]+>/i;\n      const classTitleMatch = classTitleRegex.exec(blockContent);\n      if (classTitleMatch) {\n        title = classTitleMatch[1].replace(/<[^>]*>/g, '').trim();\n      }\n    }\n    \n    let location = '';\n    const locRegex = /<[^>]*class=[\"'][^\"']*(?:location|city|remote|country|place|region)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/[^>]+>/i;\n    const locMatch = locRegex.exec(blockContent);\n    if (locMatch) {\n      location = locMatch[1].replace(/<[^>]*>/g, '').trim();\n    }\n    \n    let description = '';\n    const descRegex = /<[^>]*class=[\"'][^\"']*(?:desc|summary|detail|content|body)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/[^>]+>/i;\n    const descMatch = descRegex.exec(blockContent);\n    if (descMatch) {\n      description = descMatch[1].replace(/<[^>]*>/g, '').trim();\n    }\n    \n    let appUrl = '';\n    const linkRegex = /<a\\b[^>]*href=[\"']([^\"']+)[\"'][^>]*>([\\s\\S]*?)<\\/a>/gi;\n    let linkMatch;\n    let bestLink = '';\n    while ((linkMatch = linkRegex.exec(blockContent)) !== null) {\n      const href = linkMatch[1];\n      const text = linkMatch[2].replace(/<[^>]*>/g, '').toLowerCase();\n      if (text.includes('apply') || text.includes('view') || text.includes('detail') || href.includes('job') || href.includes('apply')) {\n        bestLink = href;\n        break;\n      }\n      if (!bestLink) {\n        bestLink = href;\n      }\n    }\n    \n    if (bestLink) {\n      if (bestLink.startsWith('/')) {\n        try {\n          const urlObj = new URL(sourceUrl);\n          appUrl = urlObj.origin + bestLink;\n        } catch (e) {\n          appUrl = sourceUrl;\n        }\n      } else if (!bestLink.startsWith('http')) {\n        appUrl = sourceUrl;\n      } else {\n        appUrl = bestLink;\n      }\n    } else {\n      appUrl = sourceUrl;\n    }\n    \n    if (title && title.length > 2 && title.length < 150) {\n      extractedJobs.push({\n        company_id: companyId,\n        source_id: sourceId,\n        title: title,\n        location: location || 'Remote / Unspecified',\n        description: description || `Open position for ${title}. See details at ${sourceUrl}`,\n        job_type: \"Full-time\",\n        remote_type: (location.toLowerCase().includes('remote') || title.toLowerCase().includes('remote')) ? 'remote' : 'hybrid',\n        currency: \"USD\",\n        application_url: appUrl,\n        is_valid: true\n      });\n    }\n  }\n}\n\n// 3. Output check\nif (extractedJobs.length === 0) {\n  return [{\n    json: {\n      company_id: companyId,\n      source_id: sourceId,\n      source_url: sourceUrl,\n      is_valid: false,\n      status: \"no_jobs_extracted\",\n      reason: \"Could not parse any jobs from the career page\"\n    }\n  }];\n}\n\nreturn extractedJobs.map(job => ({ json: job }));"
-      },
-      "id": "e0bfa9d8-9db8-40a2-aa5f-e0c25a072049",
-      "name": "Parse & Normalize HTML",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 1,
-      "position": [
-        1480,
-        240
+        -1104,
+        112
       ]
     },
     {
@@ -131,95 +80,87 @@
           ]
         }
       },
-      "id": "f5d0e2e2-9b2f-488d-bbcc-04f762a1c02b",
+      "id": "7752f17b-b904-4466-88c5-97de96547b9a",
       "name": "Check If Jobs Found",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
-        1700,
-        240
+        -448,
+        112
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{$env.API_URL || 'http://api:8000'}}/api/jobs",
+        "url": "http://api:8000/api/jobs",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"company_id\": \"{{$json.company_id}}\",\n  \"source_id\": \"{{$json.source_id}}\",\n  \"title\": \"{{$json.title}}\",\n  \"description\": \"{{$json.description}}\",\n  \"location\": \"{{$json.location}}\",\n  \"job_type\": \"{{$json.job_type}}\",\n  \"remote_type\": \"{{$json.remote_type}}\",\n  \"currency\": \"{{$json.currency}}\",\n  \"application_url\": \"{{$json.application_url}}\"\n}",
+        "jsonBody": "={\n  \"company_id\": \"{{$json.company_id}}\",\n  \"title\": \"{{$json.title}}\",\n  \"description\": \"{{$json.description}}\",\n  \"location\": \"{{$json.location}}\",\n  \"job_type\": \"{{$json.job_type}}\",\n  \"remote_type\": \"{{$json.remote_type}}\",\n  \"currency\": \"{{$json.currency}}\",\n  \"application_url\": \"{{$json.application_url}}\"\n}",
         "options": {}
       },
-      "id": "8bb3dfa2-3f19-4cb5-aa5f-62e92c23f1a9",
+      "id": "3e176f48-7352-40ae-a0f5-a25a02eb29d5",
       "name": "Submit Job to API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        1920,
-        140
+        0,
+        0
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst companyId = item.id || '';\nconst sourceUrl = item.career_page_url || '';\n\nif (!sourceUrl) {\n  return [{\n    json: {\n      company_id: companyId,\n      is_valid: false,\n      status: 'no_career_page_url',\n      reason: 'Company has no career page URL'\n    }\n  }];\n}\n\nconst response = await this.helpers.httpRequest({\n  method: 'GET',\n  url: sourceUrl,\n  headers: {\n    'User-Agent': 'Mozilla/5.0 (compatible; JobBot/1.0)'\n  },\n  returnFullResponse: false\n});\n\nconst html = typeof response === 'string' ? response : JSON.stringify(response);\n\nif (!html || html.length < 100) {\n  return [{\n    json: {\n      company_id: companyId,\n      is_valid: false,\n      status: 'empty_response',\n      reason: 'Career page returned empty or invalid HTML'\n    }\n  }];\n}\n\nconst extractedJobs = [];\n\n// 1. JSON-LD parsing\nconst jsonLdRegex = /<script\\b[^>]*type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/gi;\nlet match;\nwhile ((match = jsonLdRegex.exec(html)) !== null) {\n  try {\n    const data = JSON.parse(match[1].trim());\n\n    const processObject = (obj) => {\n      if (obj && (obj['@type'] === 'JobPosting' || obj['type'] === 'JobPosting')) {\n        const title = obj.title || obj.name;\n        const description = obj.description || '';\n        let location = '';\n        if (obj.jobLocation) {\n          if (typeof obj.jobLocation === 'string') {\n            location = obj.jobLocation;\n          } else if (obj.jobLocation.address) {\n            const addr = obj.jobLocation.address;\n            location = [addr.streetAddress, addr.addressLocality, addr.addressRegion, addr.postalCode, addr.addressCountry]\n              .filter(Boolean).join(', ');\n          }\n        }\n        if (title) {\n          extractedJobs.push({\n            company_id: companyId,\n            title: title.trim(),\n            description: description.trim() || `Open position for ${title.trim()}. See details at ${sourceUrl}`,\n            location: location.trim() || 'Remote / Unspecified',\n            job_type: 'Full-time',\n            remote_type: location.toLowerCase().includes('remote') ? 'remote' : 'hybrid',\n            currency: 'USD',\n            application_url: (obj.url || sourceUrl).trim(),\n            posted_at: obj.datePosted || null,\n            is_valid: true\n          });\n        }\n      }\n    };\n\n    if (Array.isArray(data)) data.forEach(processObject);\n    else if (data['@graph'] && Array.isArray(data['@graph'])) data['@graph'].forEach(processObject);\n    else processObject(data);\n  } catch (e) {}\n}\n\n// 2. SAP SuccessFactors HTML table fallback\nif (extractedJobs.length === 0) {\n  const rowRegex = /<tr[^>]*class=\"data-row\"[^>]*>([\\s\\S]*?)<\\/tr>/gi;\n  let rowMatch;\n\n  while ((rowMatch = rowRegex.exec(html)) !== null) {\n    const rowContent = rowMatch[1];\n\n    const titleLinkMatch =\n      /<a\\s+href=\"([^\"]+)\"[^>]*class=\"jobTitle-link\"[^>]*>([^<]+)<\\/a>/i.exec(rowContent) ||\n      /<a\\s+[^>]*class=\"jobTitle-link\"[^>]*href=\"([^\"]+)\"[^>]*>([^<]+)<\\/a>/i.exec(rowContent);\n\n    if (!titleLinkMatch) continue;\n\n    const relativeUrl = titleLinkMatch[1];\n    const title = titleLinkMatch[2].trim();\n\n    // Build absolute application URL\n    let appUrl = relativeUrl;\n    if (relativeUrl.startsWith('/')) {\n      try {\n        const urlObj = new URL(sourceUrl);\n        appUrl = urlObj.origin + relativeUrl;\n      } catch (e) {\n        appUrl = sourceUrl;\n      }\n    } else if (!relativeUrl.startsWith('http')) {\n      appUrl = sourceUrl;\n    }\n\n    const locMatch = /<span[^>]*class=\"jobLocation\"[^>]*>\\s*([^<]+)\\s*<\\/span>/i.exec(rowContent);\n    const location = locMatch ? locMatch[1].trim() : 'Remote / Unspecified';\n\n    const dateMatch = /<span[^>]*class=\"jobDate\"[^>]*>\\s*([^<]+)\\s*<\\/span>/i.exec(rowContent);\n    const postedAt = dateMatch ? dateMatch[1].trim() : null;\n\n    // Fetch individual job page to get real description\n    let description = `Open position for ${title}. See details at ${appUrl}`;\n    try {\n      const jobPageResponse = await this.helpers.httpRequest({\n        method: 'GET',\n        url: appUrl,\n        headers: {\n          'User-Agent': 'Mozilla/5.0 (compatible; JobBot/1.0)'\n        },\n        returnFullResponse: false\n      });\n\n      const jobHtml = typeof jobPageResponse === 'string' ? jobPageResponse : '';\n\n      // SAP SuccessFactors job description is in .jobDescriptionContent or similar\n      const descMatch =\n        /<div[^>]*class=\"[^\"]*jobDescriptionContent[^\"]*\"[^>]*>([\\s\\S]*?)<\\/div>/i.exec(jobHtml) ||\n        /<div[^>]*id=\"[^\"]*jobDescription[^\"]*\"[^>]*>([\\s\\S]*?)<\\/div>/i.exec(jobHtml) ||\n        /<div[^>]*class=\"[^\"]*job-description[^\"]*\"[^>]*>([\\s\\S]*?)<\\/div>/i.exec(jobHtml) ||\n        /<div[^>]*class=\"[^\"]*description[^\"]*\"[^>]*>([\\s\\S]*?)<\\/div>/i.exec(jobHtml);\n\n      if (descMatch) {\n        description = descMatch[1]\n          .replace(/<[^>]*>/g, ' ')  // strip HTML tags\n          .replace(/\\s+/g, ' ')       // collapse whitespace\n          .trim()\n          .substring(0, 5000);        // cap at 5000 chars\n      }\n    } catch (e) {\n      // Keep default description if job page fetch fails\n    }\n\n    if (title && title.length > 2 && title.length < 150) {\n      extractedJobs.push({\n        company_id: companyId,\n        title: title,\n        location: location,\n        description: description,\n        job_type: 'Full-time',\n        remote_type: location.toLowerCase().includes('remote') ? 'remote' : 'hybrid',\n        currency: 'USD',\n        application_url: appUrl,        // ← now the individual job URL\n        posted_at: postedAt,\n        is_valid: true\n      });\n    }\n  }\n}\n\n// 3. Generic HTML block fallback\nif (extractedJobs.length === 0) {\n  const blockRegex = /<(div|li|article|section)\\b[^>]*class=\"[^\"]*(?:job|vacancy|position|posting|listing|opportunity|career)[^\"]*\"[^>]*>([\\s\\S]*?)<\\/\\1>/gi;\n  let blockMatch;\n\n  while ((blockMatch = blockRegex.exec(html)) !== null) {\n    const blockContent = blockMatch[2];\n\n    let title = '';\n    const hMatch = /<h[1-4]\\b[^>]*>([\\s\\S]*?)<\\/h[1-4]>/i.exec(blockContent);\n    if (hMatch) {\n      title = hMatch[1].replace(/<[^>]*>/g, '').trim();\n    } else {\n      const classTitleMatch = /<[^>]*class=\"[^\"]*(?:title|position|role|job-name)[^\"]*\"[^>]*>([\\s\\S]*?)<\\/[^>]+>/i.exec(blockContent);\n      if (classTitleMatch) title = classTitleMatch[1].replace(/<[^>]*>/g, '').trim();\n    }\n\n    if (!title || title.length < 3 || title.length > 150) continue;\n\n    const locMatch = /<[^>]*class=\"[^\"]*(?:location|city|remote|country|place|region)[^\"]*\"[^>]*>([\\s\\S]*?)<\\/[^>]+>/i.exec(blockContent);\n    const location = locMatch ? locMatch[1].replace(/<[^>]*>/g, '').trim() : 'Remote / Unspecified';\n\n    const linkRegex = /<a\\b[^>]*href=\"([^\"]+)\"[^>]*>([\\s\\S]*?)<\\/a>/gi;\n    let linkMatch;\n    let bestLink = '';\n    while ((linkMatch = linkRegex.exec(blockContent)) !== null) {\n      const href = linkMatch[1];\n      const text = linkMatch[2].replace(/<[^>]*>/g, '').toLowerCase();\n      if (text.includes('apply') || text.includes('view') || text.includes('detail') || href.includes('job') || href.includes('apply')) {\n        bestLink = href;\n        break;\n      }\n      if (!bestLink) bestLink = href;\n    }\n\n    let appUrl = sourceUrl;\n    if (bestLink) {\n      if (bestLink.startsWith('/')) {\n        try {\n          const urlObj = new URL(sourceUrl);\n          appUrl = urlObj.origin + bestLink;\n        } catch (e) {\n          appUrl = sourceUrl;\n        }\n      } else if (bestLink.startsWith('http')) {\n        appUrl = bestLink;\n      }\n    }\n\n    extractedJobs.push({\n      company_id: companyId,\n      title: title,\n      location: location,\n      description: `Open position for ${title}. See details at ${appUrl}`,\n      job_type: 'Full-time',\n      remote_type: (location.toLowerCase().includes('remote') || title.toLowerCase().includes('remote')) ? 'remote' : 'hybrid',\n      currency: 'USD',\n      application_url: appUrl,\n      posted_at: null,\n      is_valid: true\n    });\n  }\n}\n\n// 4. Nothing found\nif (extractedJobs.length === 0) {\n  return [{\n    json: {\n      company_id: companyId,\n      source_url: sourceUrl,\n      is_valid: false,\n      status: 'no_jobs_extracted',\n      reason: 'Could not parse any jobs from the career page'\n    }\n  }];\n}\n\nreturn extractedJobs.map(job => ({ json: job }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        112
+      ],
+      "id": "eab735ed-5f00-4b76-bcec-07aed35b60d6",
+      "name": "Fetch and Parse"
     }
   ],
+  "pinData": {},
   "connections": {
     "Schedule Trigger": {
       "main": [
         [
           {
-            "node": "Get Career Page Sources",
+            "node": "Get Active Companies",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Career Page Sources": {
+    "Get Active Companies": {
       "main": [
         [
           {
-            "node": "Loop Through Sources",
+            "node": "Has Career Page",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Loop Through Sources": {
+    "Has Career Page": {
       "main": [
         [
           {
-            "node": "Preserve Source Metadata",
+            "node": "Loop Through Companies",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Preserve Source Metadata": {
+    "Loop Through Companies": {
       "main": [
         [
           {
-            "node": "Fetch Career Page HTML",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Career Page HTML": {
-      "main": [
-        [
-          {
-            "node": "Parse & Normalize HTML",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Parse & Normalize HTML": {
-      "main": [
-        [
-          {
-            "node": "Check If Jobs Found",
+            "node": "Fetch and Parse",
             "type": "main",
             "index": 0
           }
@@ -237,7 +178,7 @@
         ],
         [
           {
-            "node": "Loop Through Sources",
+            "node": "Loop Through Companies",
             "type": "main",
             "index": 0
           }
@@ -248,7 +189,18 @@
       "main": [
         [
           {
-            "node": "Loop Through Sources",
+            "node": "Loop Through Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch and Parse": {
+      "main": [
+        [
+          {
+            "node": "Check If Jobs Found",
             "type": "main",
             "index": 0
           }
@@ -257,10 +209,16 @@
     }
   },
   "active": false,
-  "settings": {},
-  "versionId": "f7d79b9a-41e7-497b-b5ee-01f654b9d0a6",
-  "id": "1",
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "cf94c7d3-8213-42a4-8590-e7bca8cc8ba5",
   "meta": {
-    "templateId": "career-page-collector"
-  }
+    "instanceId": "15f21013b5121ca3a64678ec6b6ac5711ee10d95d15990f4161dbfca767e8418"
+  },
+  "nodeGroups": [],
+  "id": "y68ov5ehS6vP1Jsu",
+  "tags": []
 }

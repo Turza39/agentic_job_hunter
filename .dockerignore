@@ -1,0 +1,71 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Local tooling & Claude Code
+.claude
+.claude.json
+.clauderc
+
+# Secrets and envs — never bake into the image
+.env
+.env.*
+!.env.example
+
+# Project-root docs and helper scripts (not needed at runtime)
+# Match *.md at any depth, then re-allow the api package's docs
+*.md
+*/*.md
+*/*/*.md
+!api/
+!api/README.md
+
+# Explicitly exclude top-level project docs (these would have been matched above)
+README.md
+ARCHITECTURE.md
+SETUP.md
+QUICKSTART.md
+IMPLEMENTATION-CHECKLIST.md
+PHASE4_GUIDE.md
+
+# Helper scripts
+setup_phase4.ps1
+setup_phase4.sh
+
+# Project-root requirements.txt — api/requirements.txt is what gets installed.
+# (The Dockerfile still copies api/requirements.txt into /app/requirements.txt
+#  for the pip install step, which is intentional.)
+requirements.txt
+
+# Sibling projects that don't belong in the API image
+browser-worker
+dashboard
+database
+n8n
+cv-storage
+
+# Empty placeholders (kept on host, not in image)
+.gitkeep
+*/.gitkeep
+*/*/.gitkeep
+
+# Build artifacts and caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+dist
+build
+*.egg-info
+
+# Editor / OS noise
+.idea
+.vscode
+.DS_Store
+Thumbs.db

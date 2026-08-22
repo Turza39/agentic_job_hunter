@@ -1,42 +1,5 @@
 # Personal AI-assisted job application automation system 
 
-## 📊 Project Status
-
-| Phase | Name | Status |
-|-------|------|--------|
-| 0 | Define MVP | ✅ Complete |
-| 1 | Project Structure | ✅ Complete |
-| 2 | Docker Environment | ✅ Complete |
-| 3 | PostgreSQL Database | ✅ Complete |
-| 4 | Profile & CV Management API | ✅ Complete |
-| 5 | Job Source System | ✅ Complete |
-| 6 | Career Page Collector | ✅ Complete |
-| 7 | Bdjobs Collector | ⏳ Pending |
-| 8 | Deduplication | ✅ Complete |
-| 9-13 | Additional Phases | ⏳ Pending |
-| 14 | Full Integration & Testing | ⏳ Pending |
-
-### Phase 4 Deliverables
-
-✅ FastAPI REST API (main.py, routes.py)
-✅ SQLAlchemy ORM models for Profile, CV, UserPreference
-✅ Pydantic request/response validation schemas
-✅ Business logic services (ProfileService, CVService, UserPreferenceService)
-✅ File upload handling for CVs (PDF, DOC, DOCX)
-✅ Database connection pooling and session management
-✅ Configuration management via environment variables
-✅ Docker containerization (Dockerfile)
-✅ Docker Compose integration with PostgreSQL
-✅ API documentation and examples
-✅ Test suite for all endpoints
-
-**Running Phase 4:**
-```bash
-docker compose up api
-# API available at http://localhost:8000
-# Interactive docs at http://localhost:8000/docs
-```
-
 ---
 
 # Project Goal

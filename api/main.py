@@ -5,26 +5,24 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-import os
 from pathlib import Path
+from api.core.database import Base, engine, get_db
+from api.core.config import settings
+from api.routers import user_router, cv_router, preference_router, company_router, job_router
+from api.schemas.common import HealthResponse
 
-from database import Base, engine, get_db
-from config import settings
-from routes import router
-from schemas import HealthResponse
+app = FastAPI(
+    title="Agentic Job Hunter API",
+    description="API for managing job hunter profiles and applications",
+    version="0.1.0"
+)
+
 
 # Create upload directory if it doesn't exist
 Path(settings.cv_upload_dir).mkdir(parents=True, exist_ok=True)
 
 # Create tables
 Base.metadata.create_all(bind=engine)
-
-# Initialize FastAPI app
-app = FastAPI(
-    title="Agentic Job Hunter API",
-    description="API for managing job hunter profiles and applications",
-    version="0.1.0"
-)
 
 # Add CORS middleware
 app.add_middleware(
@@ -35,8 +33,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routes
-app.include_router(router)
+# Include routers
+app.include_router(user_router, prefix="/api")
+app.include_router(cv_router, prefix="/api")
+app.include_router(preference_router, prefix="/api")
+app.include_router(company_router, prefix="/api")
+app.include_router(job_router, prefix="/api")
 
 
 # ============================================================================
