@@ -87,6 +87,23 @@ services:
       retries: 3
     networks:
       - job-agent-network
+  
+  browser-worker:
+    build:
+      context: ./browser-worker
+      dockerfile: Dockerfile
+    container_name: job-agent-browser-worker
+
+    init: true
+    ipc: host
+
+    ports:
+      - "8001:8000"
+
+    restart: unless-stopped
+
+    networks:
+      - job-agent-network
 
 volumes:
   postgres_data:

@@ -15,18 +15,21 @@ class JobService:
     def _generate_normalized_hash(
         company_id: UUID,
         title: str,
-        application_url: Optional[str]
+        job_url: str
     ) -> str:
         """
-        Generate a deterministic hash used for job deduplication.
+        Generate deterministic hash for job identity.
+
+        A job is identified by:
+        company + normalized title + job URL
         """
 
-        normalized_title = " ".join(title.lower().split())
+        normalized_title = " ".join(
+            title.lower().split()
+        )
 
         normalized_url = (
-            application_url.lower().rstrip("/")
-            if application_url
-            else ""
+            job_url.lower().rstrip("/")
         )
 
         hash_input = (
@@ -44,14 +47,16 @@ class JobService:
         db: Session,
         job_data: JobCreate
     ) -> Job:
-        """
-        Create a discovered job.
-
-        Jobs are normally created by the collector/n8n pipeline,
-        not directly by users.
-        """
 
         title = job_data.title.strip()
+
+        source_url = str(
+            job_data.source_url
+        )
+
+        job_url = str(
+            job_data.job_url
+        )
 
         application_url = (
             str(job_data.application_url)
@@ -59,13 +64,14 @@ class JobService:
             else None
         )
 
-        normalized_hash = JobService._generate_normalized_hash(
-            company_id=job_data.company_id,
-            title=title,
-            application_url=application_url
+        normalized_hash = (
+            JobService._generate_normalized_hash(
+                company_id=job_data.company_id,
+                title=title,
+                job_url=job_url
+            )
         )
 
-        # Deduplicate using normalized hash.
         existing_job = (
             db.query(Job)
             .filter(
@@ -75,26 +81,110 @@ class JobService:
         )
 
         if existing_job:
+
+            # Update information discovered on
+            # subsequent collection runs.
+            existing_job.description = (
+                job_data.description
+            )
+
+            existing_job.location = (
+                job_data.location
+            )
+
+            existing_job.job_type = (
+                job_data.job_type
+            )
+
+            existing_job.remote_type = (
+                job_data.remote_type
+            )
+
+            existing_job.salary_min = (
+                job_data.salary_min
+            )
+
+            existing_job.salary_max = (
+                job_data.salary_max
+            )
+
+            existing_job.currency = (
+                job_data.currency
+            )
+
+            existing_job.experience_required = (
+                job_data.experience_required
+            )
+
+            existing_job.experience_level = (
+                job_data.experience_level
+            )
+
+            existing_job.requirements = (
+                job_data.requirements
+            )
+
+            existing_job.nice_to_have = (
+                job_data.nice_to_have
+            )
+
+            existing_job.application_url = (
+                application_url
+            )
+
+            existing_job.posted_at = (
+                job_data.posted_at
+            )
+
+            existing_job.expires_at = (
+                job_data.expires_at
+            )
+
+            existing_job.is_active = True
+
+            db.commit()
+            db.refresh(existing_job)
+
             return existing_job
 
         job = Job(
             company_id=job_data.company_id,
             title=title,
             description=job_data.description,
+
             location=job_data.location,
             job_type=job_data.job_type,
             remote_type=job_data.remote_type,
+
             salary_min=job_data.salary_min,
             salary_max=job_data.salary_max,
             currency=job_data.currency,
-            experience_required=job_data.experience_required,
-            experience_level=job_data.experience_level,
-            requirements=job_data.requirements or [],
-            nice_to_have=job_data.nice_to_have or [],
+
+            experience_required=(
+                job_data.experience_required
+            ),
+
+            experience_level=(
+                job_data.experience_level
+            ),
+
+            requirements=(
+                job_data.requirements
+            ),
+
+            nice_to_have=(
+                job_data.nice_to_have
+            ),
+
+            source_url=source_url,
+            job_url=job_url,
             application_url=application_url,
+
             posted_at=job_data.posted_at,
             expires_at=job_data.expires_at,
+
             normalized_hash=normalized_hash,
+
             is_duplicate=False,
             is_active=True
         )
@@ -102,19 +192,21 @@ class JobService:
         db.add(job)
 
         try:
+
             db.commit()
             db.refresh(job)
 
             return job
 
         except IntegrityError:
+
             db.rollback()
 
-            # Another collector process may have inserted the same job.
             existing_job = (
                 db.query(Job)
                 .filter(
-                    Job.normalized_hash == normalized_hash
+                    Job.normalized_hash ==
+                    normalized_hash
                 )
                 .first()
             )
@@ -131,7 +223,6 @@ class JobService:
         db: Session,
         job_id: UUID
     ) -> Optional[Job]:
-        """Get a job by ID."""
 
         return (
             db.query(Job)
@@ -148,7 +239,6 @@ class JobService:
         is_duplicate: Optional[bool] = None,
         company_id: Optional[UUID] = None
     ) -> List[Job]:
-        """List jobs with optional filters."""
 
         query = db.query(Job)
 
@@ -169,6 +259,7 @@ class JobService:
 
         return (
             query
+            .order_by(Job.created_at.desc())
             .offset(skip)
             .limit(limit)
             .all()
@@ -180,9 +271,11 @@ class JobService:
         job_id: UUID,
         job_data: JobUpdate
     ) -> Optional[Job]:
-        """Update a discovered job."""
 
-        job = JobService.get_job(db, job_id)
+        job = JobService.get_job(
+            db,
+            job_id
+        )
 
         if not job:
             return None
@@ -190,6 +283,22 @@ class JobService:
         update_data = job_data.model_dump(
             exclude_unset=True
         )
+
+        if (
+            "source_url" in update_data
+            and update_data["source_url"]
+        ):
+            update_data["source_url"] = str(
+                update_data["source_url"]
+            )
+
+        if (
+            "job_url" in update_data
+            and update_data["job_url"]
+        ):
+            update_data["job_url"] = str(
+                update_data["job_url"]
+            )
 
         if (
             "application_url" in update_data
@@ -202,16 +311,16 @@ class JobService:
         for field, value in update_data.items():
             setattr(job, field, value)
 
-        # Recalculate deduplication hash if identity fields changed.
         if (
             "title" in update_data
-            or "application_url" in update_data
+            or "job_url" in update_data
         ):
+
             job.normalized_hash = (
                 JobService._generate_normalized_hash(
                     company_id=job.company_id,
                     title=job.title,
-                    application_url=job.application_url
+                    job_url=job.job_url
                 )
             )
 
@@ -225,9 +334,11 @@ class JobService:
         db: Session,
         job_id: UUID
     ) -> bool:
-        """Deactivate a job."""
 
-        job = JobService.get_job(db, job_id)
+        job = JobService.get_job(
+            db,
+            job_id
+        )
 
         if not job:
             return False

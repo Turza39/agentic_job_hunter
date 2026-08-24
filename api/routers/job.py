@@ -1,50 +1,91 @@
 """
 Job API routes
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
 
 from ..core.database import get_db
-from ..schemas.job import JobCreate, JobUpdate, JobResponse
+from ..schemas.job import (
+    JobCreate,
+    JobUpdate,
+    JobResponse
+)
 from ..services.job import JobService
 from ..services.company import CompanyService
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+router = APIRouter(
+    prefix="/jobs",
+    tags=["jobs"]
+)
 
 
-@router.post("", response_model=JobResponse, status_code=201)
+@router.post(
+    "",
+    response_model=JobResponse,
+    status_code=201
+)
 def create_job(
     job_data: JobCreate,
     db: Session = Depends(get_db)
 ):
-    """Create a new job"""
-    # Check if company exists
-    company = CompanyService.get_company(db, job_data.company_id)
+
+    company = CompanyService.get_company(
+        db,
+        job_data.company_id
+    )
+
     if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Company not found"
+        )
 
     try:
-        job = JobService.create_job(db, job_data)
-        return job
+
+        return JobService.create_job(
+            db,
+            job_data
+        )
+
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
 
-@router.get("/{job_id}", response_model=JobResponse)
+@router.get(
+    "/{job_id}",
+    response_model=JobResponse
+)
 def get_job(
     job_id: UUID,
     db: Session = Depends(get_db)
 ):
-    """Get job by ID"""
-    job = JobService.get_job(db, job_id)
+
+    job = JobService.get_job(
+        db,
+        job_id
+    )
+
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found"
+        )
+
     return job
 
 
-@router.get("", response_model=List[JobResponse])
+@router.get(
+    "",
+    response_model=List[JobResponse]
+)
 def list_jobs(
     skip: int = 0,
     limit: int = 100,
@@ -53,29 +94,56 @@ def list_jobs(
     company_id: Optional[UUID] = None,
     db: Session = Depends(get_db)
 ):
-    """List jobs with filters"""
-    jobs = JobService.list_jobs(db, skip=skip, limit=limit, is_active=is_active, is_duplicate=is_duplicate, company_id=company_id)
-    return jobs
+
+    return JobService.list_jobs(
+        db,
+        skip=skip,
+        limit=limit,
+        is_active=is_active,
+        is_duplicate=is_duplicate,
+        company_id=company_id
+    )
 
 
-@router.put("/{job_id}", response_model=JobResponse)
+@router.put(
+    "/{job_id}",
+    response_model=JobResponse
+)
 def update_job(
     job_id: UUID,
     job_data: JobUpdate,
     db: Session = Depends(get_db)
 ):
-    """Update a job"""
-    job = JobService.update_job(db, job_id, job_data)
+
+    job = JobService.update_job(
+        db,
+        job_id,
+        job_data
+    )
+
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found"
+        )
+
     return job
 
 
-@router.delete("/{job_id}", status_code=204)
+@router.delete(
+    "/{job_id}",
+    status_code=204
+)
 def delete_job(
     job_id: UUID,
     db: Session = Depends(get_db)
 ):
-    """Delete a job"""
-    if not JobService.delete_job(db, job_id):
-        raise HTTPException(status_code=404, detail="Job not found")
+
+    if not JobService.delete_job(
+        db,
+        job_id
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found"
+        )

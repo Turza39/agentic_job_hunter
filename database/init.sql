@@ -76,32 +76,53 @@ CREATE TABLE companies (
 -- Jobs (normalized structure from all sources)
 CREATE TABLE jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+
+    company_id UUID NOT NULL
+        REFERENCES companies(id)
+        ON DELETE CASCADE,
+
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
+
     location VARCHAR(255),
-    job_type VARCHAR(50),                    -- 'Full-time', 'Part-time', 'Contract', 'Internship'
-    remote_type VARCHAR(50),                 -- 'remote', 'on-site', 'hybrid'
+    job_type VARCHAR(50),
+    remote_type VARCHAR(50),
+
     salary_min INT,
     salary_max INT,
-    currency VARCHAR(10) DEFAULT 'USD',
-    experience_required INT,                 -- Years
-    experience_level VARCHAR(50),            -- 'Entry', 'Mid', 'Senior', 'Lead'
-    requirements JSONB DEFAULT '[]',         -- Array of required skills/qualifications
-    nice_to_have JSONB DEFAULT '[]',         -- Array of nice-to-have skills
+    currency VARCHAR(10),
+
+    experience_required INT,
+    experience_level VARCHAR(50),
+
+    requirements JSONB DEFAULT '[]',
+    nice_to_have JSONB DEFAULT '[]',
+
+    -- URL of the career page where this job was discovered
+    source_url VARCHAR(500) NOT NULL,
+
+    -- URL of the individual job-detail page
+    job_url VARCHAR(500) NOT NULL,
+
+    -- Actual application destination, if different from job_url
     application_url VARCHAR(500),
+
     posted_at TIMESTAMP,
     expires_at TIMESTAMP,
-    normalized_hash VARCHAR(64),             -- hash(company + title + url) for deduplication
+
+    normalized_hash VARCHAR(64) UNIQUE,
+
     is_duplicate BOOLEAN DEFAULT false,
     is_active BOOLEAN DEFAULT true,
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    metadata JSONB DEFAULT '{}',
-    CONSTRAINT unique_normalized_job UNIQUE(company_id, title, application_url)
-);
 
--- ============================================================================
+    metadata JSONB DEFAULT '{}',
+
+    CONSTRAINT unique_normalized_job
+        UNIQUE(company_id, title, job_url)
+);-- ============================================================================
 -- PREFERENCE FILTERING (Phase 9)
 -- ============================================================================
 

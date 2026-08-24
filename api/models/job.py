@@ -38,7 +38,10 @@ class Job(Base):
         nullable=False
     )
 
-    description = Column(Text)
+    description = Column(
+        Text,
+        nullable=False
+    )
 
     location = Column(String(255))
 
@@ -66,6 +69,19 @@ class Job(Base):
         default=list
     )
 
+    # Career page where this job was discovered
+    source_url = Column(
+        String(500),
+        nullable=False
+    )
+
+    # Individual job details page
+    job_url = Column(
+        String(500),
+        nullable=False
+    )
+
+    # Actual application destination
     application_url = Column(String(500))
 
     posted_at = Column(DateTime)
@@ -105,7 +121,6 @@ class Job(Base):
         default=dict
     )
 
-    # Relationships
     company = relationship(
         "Company",
         back_populates="jobs"
