@@ -12,33 +12,28 @@
           ]
         }
       },
-      "id": "81eb19bf-2b87-4ed0-b512-9c492c27eff7",
+      "id": "57a49597-26e3-43be-bc0f-ce99247d80ec",
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
-      "position": [-1600, 100]
+      "position": [
+        -1184,
+        64
+      ]
     },
     {
       "parameters": {
         "url": "http://api:8000/api/companies",
         "options": {}
       },
-      "id": "563346dc-9551-4c21-ae78-920e4db2eacc",
+      "id": "8d4716f2-a363-4dea-93d4-38a0e9300dfa",
       "name": "Get Active Companies",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [-1380, 100]
-    },
-    {
-      "parameters": {
-        "jsCode": "const companies = $input.all();\nconst output = [];\n\nfunction cleanText(value) {\n  return String(value || '')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/&apos;/gi, \"'\")\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction absoluteUrl(href, base) {\n  try { return new URL(href, base).href; } catch { return null; }\n}\n\nfunction looksLikeJobTitle(text) {\n  return text && text.length >= 2 && text.length <= 200;\n}\n\nfor (const item of companies) {\n  const company = item.json || {};\n  const companyId = company.id;\n  const sourceUrl = company.career_page_url;\n\n  if (!companyId || !sourceUrl) {\n    output.push({ json: { company_id: companyId || null, source_url: sourceUrl || null, job_url: null, title: null, is_valid: false, status: 'missing_company_id_or_url' } });\n    continue;\n  }\n\n  let html;\n  try {\n    const response = await this.helpers.httpRequest({\n      method: 'GET',\n      url: sourceUrl,\n      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36' },\n      returnFullResponse: false\n    });\n    html = typeof response === 'string' ? response : (response.data ?? response.body ?? response.html ?? JSON.stringify(response));\n  } catch (error) {\n    output.push({ json: { company_id: companyId, source_url: sourceUrl, job_url: null, title: null, is_valid: false, status: 'career_page_fetch_failed', reason: error.message } });\n    continue;\n  }\n\n  const found = new Map();\n\n  // 1. JSON-LD\n  for (const m of html.matchAll(/<script[^>]+type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/gi)) {\n    try {\n      const entries = [].concat(JSON.parse(m[1].trim()));\n      for (const entry of entries) {\n        for (const obj of (entry?.['@graph'] || [entry])) {\n          if (obj?.['@type'] !== 'JobPosting') continue;\n          const title = cleanText(obj.title);\n          const url = absoluteUrl(obj.url || obj['@id'], sourceUrl);\n          if (title && url) found.set(url, { company_id: companyId, source_url: sourceUrl, job_url: url, title, is_valid: true, status: 'job_discovered', discovery_method: 'json-ld' });\n        }\n      }\n    } catch {}\n  }\n\n  // 2. Targeted jobTitle-link anchors (SuccessFactors) - href first\n  for (const m of html.matchAll(/<a[^>]+href=\"([^\"]+)\"[^>]*class=\"[^\"]*jobTitle-link[^\"]*\"[^>]*>([^<]+)<\\/a>/gi)) {\n    const url = absoluteUrl(m[1], sourceUrl);\n    const title = cleanText(m[2]);\n    if (url && looksLikeJobTitle(title) && !found.has(url))\n      found.set(url, { company_id: companyId, source_url: sourceUrl, job_url: url, title, is_valid: true, status: 'job_discovered', discovery_method: 'targeted-anchor' });\n  }\n\n  // 2b. Targeted jobTitle-link anchors - class first\n  for (const m of html.matchAll(/<a[^>]+class=\"[^\"]*jobTitle-link[^\"]*\"[^>]+href=\"([^\"]+)\"[^>]*>([^<]+)<\\/a>/gi)) {\n    const url = absoluteUrl(m[1], sourceUrl);\n    const title = cleanText(m[2]);\n    if (url && looksLikeJobTitle(title) && !found.has(url))\n      found.set(url, { company_id: companyId, source_url: sourceUrl, job_url: url, title, is_valid: true, status: 'job_discovered', discovery_method: 'targeted-anchor' });\n  }\n\n  // 3. Generic /job/ anchor fallback\n  for (const m of html.matchAll(/<a\\b[^>]+href=\"(\\/job\\/[^\"]+)\"[^>]*>([^<]{2,200})<\\/a>/gi)) {\n    const url = absoluteUrl(m[1], sourceUrl);\n    const title = cleanText(m[2]);\n    if (url && looksLikeJobTitle(title) && !found.has(url))\n      found.set(url, { company_id: companyId, source_url: sourceUrl, job_url: url, title, is_valid: true, status: 'job_discovered', discovery_method: 'generic-anchor' });\n  }\n\n  if (found.size === 0) {\n    output.push({ json: { company_id: companyId, source_url: sourceUrl, job_url: null, title: null, is_valid: false, status: 'no_jobs_found', html_length: html.length } });\n    continue;\n  }\n\n  for (const job of found.values()) output.push({ json: job });\n}\n\nreturn output;",
-        "mode": "runOnceForAllItems"
-      },
-      "id": "6b6ca3c9-feaa-4818-ae51-e862bbb57984",
-      "name": "Discover Job Links1",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [-920, 100]
+      "position": [
+        -960,
+        64
+      ]
     },
     {
       "parameters": {
@@ -51,33 +46,14 @@
           ]
         }
       },
-      "id": "valid-job-url-if",
+      "id": "b89f99e3-bf30-470b-9bf7-d29810e07f92",
       "name": "Valid Job URL?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [-680, 100]
-    },
-    {
-      "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst jobUrl = item.job_url;\n\nif (!jobUrl) {\n  return [{ json: { ...item, is_valid: false, status: 'missing_job_url', reason: 'No individual job URL was discovered' } }];\n}\n\nlet html;\ntry {\n  const response = await this.helpers.httpRequest({\n    method: 'GET',\n    url: jobUrl,\n    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36' },\n    returnFullResponse: false\n  });\n  html = typeof response === 'string' ? response : (response.data ?? response.body ?? response.html ?? JSON.stringify(response));\n} catch (error) {\n  return [{ json: { ...item, is_valid: false, status: 'job_detail_fetch_failed', reason: error.message } }];\n}\n\nif (!html || html.length < 100) {\n  return [{ json: { ...item, is_valid: false, status: 'empty_job_detail', reason: 'Job detail page returned empty or very small response' } }];\n}\n\nreturn [{ json: { ...item, html, is_valid: true, status: 'job_detail_fetched' } }];",
-        "mode": "runOnceForEachItem"
-      },
-      "id": "43e73c99-6c50-4b4a-aa74-49a82d777d99",
-      "name": "Fetch Job Detail1",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [-440, 0]
-    },
-    {
-      "parameters": {
-        "jsCode": "const item = $input.item.json;\nconst html = item.html || '';\n\nfunction cleanText(value) {\n  return String(value || '')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#39;|&apos;/gi, \"'\")\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction firstMatch(patterns, text = html) {\n  for (const pattern of patterns) {\n    const match = pattern.exec(text);\n    if (match && match[1]) {\n      const value = cleanText(match[1]);\n      if (value) return value;\n    }\n  }\n  return null;\n}\n\nfunction parseJsonLdJobPosting() {\n  const regex = /<script\\b[^>]*type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/gi;\n  let match;\n  while ((match = regex.exec(html)) !== null) {\n    try {\n      const data = JSON.parse(match[1].trim());\n      const candidates = [];\n      function collect(obj) {\n        if (!obj || typeof obj !== 'object') return;\n        if (Array.isArray(obj)) { for (const e of obj) collect(e); return; }\n        const type = obj['@type'] || obj.type;\n        if (type === 'JobPosting' || (Array.isArray(type) && type.includes('JobPosting'))) candidates.push(obj);\n        if (Array.isArray(obj['@graph'])) for (const e of obj['@graph']) collect(e);\n      }\n      collect(data);\n      if (candidates.length > 0) return candidates[0];\n    } catch {}\n  }\n  return null;\n}\n\nfunction locationFromJsonLd(job) {\n  if (!job?.jobLocation) return null;\n  const locations = Array.isArray(job.jobLocation) ? job.jobLocation : [job.jobLocation];\n  return locations.map(loc => {\n    if (typeof loc === 'string') return loc;\n    const a = loc.address || {};\n    return [a.streetAddress, a.addressLocality, a.addressRegion, a.postalCode, a.addressCountry].filter(Boolean).join(', ');\n  }).filter(Boolean).join(' | ') || null;\n}\n\nfunction salaryFromJsonLd(job) {\n  const salary = job?.baseSalary || null;\n  if (!salary || typeof salary !== 'object') return {};\n  const value = salary.value && typeof salary.value === 'object' ? salary.value : salary;\n  return {\n    salary_min: value.minValue != null ? Number(value.minValue) : value.value != null ? Number(value.value) : null,\n    salary_max: value.maxValue != null ? Number(value.maxValue) : value.value != null ? Number(value.value) : null,\n    currency: salary.currency || value.currency || null\n  };\n}\n\nconst jsonLd = parseJsonLdJobPosting();\nlet title = cleanText(jsonLd?.title) || cleanText(item.title) || null;\nlet description = jsonLd?.description ? cleanText(jsonLd.description) : null;\nlet location = locationFromJsonLd(jsonLd);\nlet jobType = jsonLd?.employmentType || null;\nlet postedAt = jsonLd?.datePosted || null;\nlet expiresAt = jsonLd?.validThrough || null;\nlet applicationUrl = jsonLd?.url || null;\nconst salary = salaryFromJsonLd(jsonLd);\n\nif (!title) title = firstMatch([/<h1\\b[^>]*>([\\s\\S]*?)<\\/h1>/i, /<title\\b[^>]*>([\\s\\S]*?)<\\/title>/i]);\n\nif (!description) {\n  description = firstMatch([\n    /<(?:div|section|article)\\b[^>]*(?:class|id)=[\"'][^\"']*(?:jobDescriptionContent|job-description|job_description|jobDescription|description|job-details|job-details-content|job-content)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/(?:div|section|article)>/i,\n    /<(?:div|section|article)\\b[^>]*(?:class|id)=[\"'][^\"']*(?:description|responsibilities|qualifications|requirements)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/(?:div|section|article)>/i,\n    /<main\\b[^>]*>([\\s\\S]*?)<\\/main>/i,\n    /<article\\b[^>]*>([\\s\\S]*?)<\\/article>/i\n  ]);\n}\n\nfunction extractSection(headingPattern) {\n  const regex = new RegExp('<(?:h2|h3|h4|strong|b)[^>]*>\\\\s*([^<]*' + headingPattern + '[^<]*)\\\\s*<\\\\/(?:h2|h3|h4|strong|b)>[\\\\s\\\\S]{0,3000}?((?:<ul[\\\\s\\\\S]*?<\\\\/ul>)|(?:<ol[\\\\s\\\\S]*?<\\\\/ol>)|(?:<p[\\\\s\\\\S]*?<\\\\/p>))', 'i');\n  const match = regex.exec(html);\n  if (!match) return [];\n  const content = match[2];\n  const bullets = [];\n  for (const bm of content.matchAll(/<li\\b[^>]*>([\\s\\S]*?)<\\/li>/gi)) {\n    const text = cleanText(bm[1]);\n    if (text) bullets.push(text);\n  }\n  if (bullets.length > 0) return bullets;\n  const text = cleanText(content);\n  return text ? [text] : [];\n}\n\nconst requirements = extractSection('requirements?|qualifications?|what we[\\\\s\\\\S]{0,10}looking for|what you[\\\\s\\\\S]{0,10}need|must have|essential skills');\nconst niceToHave = extractSection('preferred qualifications?|preferred skills?|nice to have|bonus|good to have|plus|desirable');\n\nif (!location) location = firstMatch([/<(?:span|div|p)\\b[^>]*(?:class|id)=[\"'][^\"']*(?:jobLocation|job-location|location)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/(?:span|div|p)>/i]);\nif (!jobType) jobType = firstMatch([/<(?:span|div|p)\\b[^>]*(?:class|id)=[\"'][^\"']*(?:employmentType|employment-type|jobType|job-type)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/(?:span|div|p)>/i]);\nif (!postedAt) postedAt = firstMatch([/<(?:span|div|time)\\b[^>]*(?:class|id)=[\"'][^\"']*(?:posted|datePosted|job-date|posted-date)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/(?:span|div|time)>/i]);\n\nif (!applicationUrl) {\n  const applyMatch = /<a\\b[^>]*href=[\"']([^\"']+)[\"'][^>]*>[\\s\\S]{0,150}?(?:apply now|apply for this job|apply)[\\s\\S]{0,150}?<\\/a>/i.exec(html);\n  if (applyMatch) { try { applicationUrl = new URL(applyMatch[1], item.job_url).href; } catch { applicationUrl = null; } }\n}\nif (applicationUrl) { try { applicationUrl = new URL(applicationUrl, item.job_url).href; } catch { applicationUrl = null; } }\n\nif (!description || description.length < 30) {\n  return [{ json: { ...item, html: undefined, is_valid: false, status: 'job_details_incomplete', reason: 'Could not extract a meaningful job description' } }];\n}\nif (!title || title.length < 3) {\n  return [{ json: { ...item, html: undefined, is_valid: false, status: 'job_details_incomplete', reason: 'Could not extract a meaningful job title' } }];\n}\n\nconst remoteText = [location || '', description || ''].join(' ').toLowerCase();\nlet remoteType = null;\nif (/\\bfully remote\\b|\\bremote position\\b|\\bwork remotely\\b|\\b100% remote\\b/.test(remoteText)) remoteType = 'remote';\nelse if (/\\bhybrid\\b/.test(remoteText)) remoteType = 'hybrid';\nelse if (/\\bon[- ]site\\b|\\bonsite\\b|\\bin office\\b/.test(remoteText)) remoteType = 'on-site';\n\nreturn [{ json: {\n  company_id: item.company_id,\n  source_url: item.source_url,\n  job_url: item.job_url,\n  title: title.trim(),\n  description: description.substring(0, 20000).trim(),\n  location: location || null,\n  job_type: jobType || null,\n  remote_type: remoteType,\n  salary_min: salary.salary_min ?? null,\n  salary_max: salary.salary_max ?? null,\n  currency: salary.currency || null,\n  experience_required: null,\n  experience_level: null,\n  requirements,\n  nice_to_have: niceToHave,\n  application_url: applicationUrl || item.job_url,\n  posted_at: postedAt || null,\n  expires_at: expiresAt || null,\n  is_valid: true,\n  metadata: { extraction: { strategy: 'json-ld-then-regex', detail_page_fetched: true, json_ld_found: Boolean(jsonLd) } }\n} }];",
-        "mode": "runOnceForEachItem"
-      },
-      "id": "extract-job-details-1",
-      "name": "Extract Job Details1",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [-180, 0]
+      "position": [
+        -320,
+        64
+      ]
     },
     {
       "parameters": {
@@ -90,11 +66,14 @@
           ]
         }
       },
-      "id": "valid-details-if",
+      "id": "ee961120-007b-4ed8-b96c-811ff98c35d6",
       "name": "Valid Job Details?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [60, 0]
+      "position": [
+        480,
+        -16
+      ]
     },
     {
       "parameters": {
@@ -102,29 +81,183 @@
         "url": "http://api:8000/api/jobs",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"company_id\": \"{{$json.company_id}}\",\n  \"title\": {{$json.title.toJsonString()}},\n  \"description\": {{$json.description.toJsonString()}},\n  \"location\": {{$json.location.toJsonString()}},\n  \"job_type\": {{$json.job_type.toJsonString()}},\n  \"remote_type\": {{$json.remote_type.toJsonString()}},\n  \"salary_min\": {{$json.salary_min}},\n  \"salary_max\": {{$json.salary_max}},\n  \"currency\": {{$json.currency.toJsonString()}},\n  \"experience_required\": {{$json.experience_required}},\n  \"experience_level\": {{$json.experience_level.toJsonString()}},\n  \"requirements\": {{$json.requirements.toJsonString()}},\n  \"nice_to_have\": {{$json.nice_to_have.toJsonString()}},\n  \"source_url\": {{$json.source_url.toJsonString()}},\n  \"job_url\": {{$json.job_url.toJsonString()}},\n  \"application_url\": {{$json.application_url.toJsonString()}},\n  \"posted_at\": {{$json.posted_at.toJsonString()}},\n  \"expires_at\": {{$json.expires_at.toJsonString()}}\n}",
+        "jsonBody": "={{\n  {\n    company_id: $json.company_id,\n    title: $json.title ?? null,\n    description: $json.description ?? null,\n    location: $json.location ?? null,\n    job_type: $json.job_type ?? null,\n    remote_type: $json.remote_type ?? null,\n    salary_min: $json.salary_min ?? null,\n    salary_max: $json.salary_max ?? null,\n    currency: $json.currency ?? null,\n    experience_required: $json.experience_required ?? null,\n    experience_level: $json.experience_level ?? null,\n    requirements: $json.requirements ?? [],\n    nice_to_have: $json.nice_to_have ?? [],\n    source_url: $json.source_url ?? null,\n    job_url: $json.job_url ?? null,\n    application_url: $json.application_url ?? null,\n    posted_at: $json.posted_at ?? null,\n    expires_at: $json.expires_at ?? null\n  }\n}}",
         "options": {}
       },
-      "id": "76e21079-3a46-46f5-88f2-f78c4b4d76e3",
+      "id": "f4f250ef-f6a7-412f-bb17-0833b1a6faa1",
       "name": "Submit Job to API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [300, 0]
+      "position": [
+        736,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://browser-worker:8000/discover",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"company_id\": \"{{ $json.id }}\",\n  \"source_url\": \"{{ $json.career_page_url }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -736,
+        64
+      ],
+      "id": "8b7c4ee1-8a5d-44d6-9a36-658ee42a2990",
+      "name": "Playwright - get jobs"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://browser-worker:8000/fetch-job",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    company_id: $json.company_id,\n    source_url: $json.source_url,\n    title: $json.title,\n    job_url: $json.job_url\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -48,
+        -16
+      ],
+      "id": "9286af02-8a66-4237-b310-c5f9d4eac0c3",
+      "name": "Playwright - Fetch Job"
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\n\nfor (const item of $input.all()) {\n  const data = item.json;\n\n  if (!data.success) {\n    output.push({\n      json: {\n        company_id: data.company_id || null,\n        source_url: data.source_url || null,\n        job_url: null,\n        title: null,\n        is_valid: false,\n        status: \"playwright_discovery_failed\",\n        reason: data.error || \"Unknown Playwright error\"\n      }\n    });\n\n    continue;\n  }\n\n  if (!Array.isArray(data.jobs) || data.jobs.length === 0) {\n    output.push({\n      json: {\n        company_id: data.company_id,\n        source_url: data.source_url,\n        job_url: null,\n        title: null,\n        is_valid: false,\n        status: \"no_jobs_found\"\n      }\n    });\n\n    continue;\n  }\n\n  for (const job of data.jobs) {\n    output.push({\n      json: {\n        company_id: data.company_id,\n        source_url: data.source_url,\n        job_url: job.job_url,\n        title: job.title,\n        is_valid: true,\n        status: \"job_discovered\",\n        discovery_method: \"playwright\"\n      }\n    });\n  }\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        64
+      ],
+      "id": "66144915-4a89-4ef7-9812-8c4fe09aaad0",
+      "name": "Expand discovered jobs"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item.json;\nconst html = item.html || '';\n\nfunction cleanText(value) {\n  return String(value || '')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#39;|&apos;/gi, \"'\")\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction firstMatch(patterns, text = html) {\n  for (const pattern of patterns) {\n    const match = pattern.exec(text);\n\n    if (match && match[1]) {\n      const value = cleanText(match[1]);\n\n      if (value) {\n        return value;\n      }\n    }\n  }\n\n  return null;\n}\n\nfunction parseJsonLdJobPosting() {\n  const regex =\n    /<script\\b[^>]*type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/gi;\n\n  let match;\n\n  while ((match = regex.exec(html)) !== null) {\n    try {\n      const data = JSON.parse(match[1].trim());\n      const candidates = [];\n\n      function collect(obj) {\n        if (!obj || typeof obj !== 'object') {\n          return;\n        }\n\n        if (Array.isArray(obj)) {\n          for (const entry of obj) {\n            collect(entry);\n          }\n          return;\n        }\n\n        const type = obj['@type'] || obj.type;\n\n        if (\n          type === 'JobPosting' ||\n          (Array.isArray(type) && type.includes('JobPosting'))\n        ) {\n          candidates.push(obj);\n        }\n\n        if (Array.isArray(obj['@graph'])) {\n          for (const entry of obj['@graph']) {\n            collect(entry);\n          }\n        }\n      }\n\n      collect(data);\n\n      if (candidates.length > 0) {\n        return candidates[0];\n      }\n    } catch {\n      // Ignore invalid JSON-LD blocks\n    }\n  }\n\n  return null;\n}\n\nfunction locationFromJsonLd(job) {\n  if (!job?.jobLocation) {\n    return null;\n  }\n\n  const locations = Array.isArray(job.jobLocation)\n    ? job.jobLocation\n    : [job.jobLocation];\n\n  return (\n    locations\n      .map((loc) => {\n        if (typeof loc === 'string') {\n          return loc;\n        }\n\n        const address = loc.address || {};\n\n        return [\n          address.streetAddress,\n          address.addressLocality,\n          address.addressRegion,\n          address.postalCode,\n          address.addressCountry\n        ]\n          .filter(Boolean)\n          .join(', ');\n      })\n      .filter(Boolean)\n      .join(' | ') || null\n  );\n}\n\nfunction salaryFromJsonLd(job) {\n  const salary = job?.baseSalary || null;\n\n  if (!salary || typeof salary !== 'object') {\n    return {};\n  }\n\n  const value =\n    salary.value && typeof salary.value === 'object'\n      ? salary.value\n      : salary;\n\n  return {\n    salary_min:\n      value.minValue != null\n        ? Number(value.minValue)\n        : value.value != null\n          ? Number(value.value)\n          : null,\n\n    salary_max:\n      value.maxValue != null\n        ? Number(value.maxValue)\n        : value.value != null\n          ? Number(value.value)\n          : null,\n\n    currency:\n      salary.currency ||\n      value.currency ||\n      null\n  };\n}\n\n\n// ============================================================\n// JSON-LD\n// ============================================================\n\nconst jsonLd = parseJsonLdJobPosting();\n\nlet title =\n  cleanText(jsonLd?.title) ||\n  cleanText(item.title) ||\n  null;\n\nlet description =\n  jsonLd?.description\n    ? cleanText(jsonLd.description)\n    : null;\n\nlet location = locationFromJsonLd(jsonLd);\n\nlet jobType =\n  jsonLd?.employmentType ||\n  null;\n\nlet postedAt =\n  jsonLd?.datePosted ||\n  null;\n\nlet expiresAt =\n  jsonLd?.validThrough ||\n  null;\n\nlet applicationUrl =\n  jsonLd?.url ||\n  null;\n\nconst salary = salaryFromJsonLd(jsonLd);\n\n\n// ============================================================\n// TITLE FALLBACK\n// ============================================================\n\nif (!title) {\n  title = firstMatch([\n    /<h1\\b[^>]*>([\\s\\S]*?)<\\/h1>/i,\n    /<title\\b[^>]*>([\\s\\S]*?)<\\/title>/i\n  ]);\n}\n\n\n// ============================================================\n// DESCRIPTION FALLBACK\n// ============================================================\n\nif (!description) {\n  description = firstMatch([\n    /<(?:div|section|article)\\b[^>]*(?:class|id)=[\"'][^\"']*(?:jobDescriptionContent|job-description|job_description|jobDescription|description|job-details|job-details-content|job-content)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/(?:div|section|article)>/i,\n\n    /<(?:div|section|article)\\b[^>]*(?:class|id)=[\"'][^\"']*(?:description|responsibilities|qualifications|requirements)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/(?:div|section|article)>/i,\n\n    /<main\\b[^>]*>([\\s\\S]*?)<\\/main>/i,\n\n    /<article\\b[^>]*>([\\s\\S]*?)<\\/article>/i\n  ]);\n}\n\n\n// ============================================================\n// SECTION EXTRACTION\n// ============================================================\n\nfunction extractSection(headingPattern) {\n  const regex = new RegExp(\n    '<(?:h2|h3|h4|strong|b)[^>]*>' +\n      '\\\\s*([^<]*' +\n      headingPattern +\n      '[^<]*)\\\\s*' +\n      '<\\\\/(?:h2|h3|h4|strong|b)>' +\n      '[\\\\s\\\\S]{0,3000}?' +\n      '((?:<ul[\\\\s\\\\S]*?<\\\\/ul>)|' +\n      '(?:<ol[\\\\s\\\\S]*?<\\\\/ol>)|' +\n      '(?:<p[\\\\s\\\\S]*?<\\\\/p>))',\n    'i'\n  );\n\n  const match = regex.exec(html);\n\n  if (!match) {\n    return [];\n  }\n\n  const content = match[2];\n\n  const bullets = [];\n\n  for (const bm of content.matchAll(\n    /<li\\b[^>]*>([\\s\\S]*?)<\\/li>/gi\n  )) {\n    const text = cleanText(bm[1]);\n\n    if (text) {\n      bullets.push(text);\n    }\n  }\n\n  if (bullets.length > 0) {\n    return bullets;\n  }\n\n  const text = cleanText(content);\n\n  return text ? [text] : [];\n}\n\nconst requirements = extractSection(\n  'requirements?|qualifications?|what we[\\\\s\\\\S]{0,10}looking for|what you[\\\\s\\\\S]{0,10}need|must have|essential skills'\n);\n\nconst niceToHave = extractSection(\n  'preferred qualifications?|preferred skills?|nice to have|bonus|good to have|plus|desirable'\n);\n\n\n// ============================================================\n// LOCATION FALLBACK\n// ============================================================\n\nif (!location) {\n  location = firstMatch([\n    /<(?:span|div|p)\\b[^>]*(?:class|id)=[\"'][^\"']*(?:jobLocation|job-location|location)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/(?:span|div|p)>/i\n  ]);\n}\n\n\n// ============================================================\n// JOB TYPE FALLBACK\n// ============================================================\n\nif (!jobType) {\n  jobType = firstMatch([\n    /<(?:span|div|p)\\b[^>]*(?:class|id)=[\"'][^\"']*(?:employmentType|employment-type|jobType|job-type)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/(?:span|div|p)>/i\n  ]);\n}\n\n\n// ============================================================\n// POSTED DATE FALLBACK\n// ============================================================\n\nif (!postedAt) {\n  postedAt = firstMatch([\n    /<(?:span|div|time)\\b[^>]*(?:class|id)=[\"'][^\"']*(?:posted|datePosted|job-date|posted-date)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/(?:span|div|time)>/i\n  ]);\n}\n\n\n// ============================================================\n// APPLICATION URL\n// ============================================================\n\nif (!applicationUrl) {\n  const applyMatch =\n    /<a\\b[^>]*href=[\"']([^\"']+)[\"'][^>]*>[\\s\\S]{0,150}?(?:apply now|apply for this job|apply)[\\s\\S]{0,150}?<\\/a>/i.exec(\n      html\n    );\n\n  if (applyMatch) {\n    try {\n      applicationUrl = new URL(\n        applyMatch[1],\n        item.job_url\n      ).href;\n    } catch {\n      applicationUrl = null;\n    }\n  }\n}\n\nif (applicationUrl) {\n  try {\n    applicationUrl = new URL(\n      applicationUrl,\n      item.job_url\n    ).href;\n  } catch {\n    applicationUrl = null;\n  }\n}\n\n\n// ============================================================\n// VALIDATION\n// ============================================================\n\nif (!description || description.length < 30) {\n  return {\n    json: {\n      ...item,\n\n      // Don't send the entire HTML further through n8n\n      html: undefined,\n\n      is_valid: false,\n      status: 'job_details_incomplete',\n\n      reason:\n        'Could not extract a meaningful job description'\n    }\n  };\n}\n\nif (!title || title.length < 3) {\n  return {\n    json: {\n      ...item,\n\n      html: undefined,\n\n      is_valid: false,\n      status: 'job_details_incomplete',\n\n      reason:\n        'Could not extract a meaningful job title'\n    }\n  };\n}\n\n\n// ============================================================\n// REMOTE TYPE\n// ============================================================\n\nconst remoteText =\n  [location || '', description || '']\n    .join(' ')\n    .toLowerCase();\n\nlet remoteType = null;\n\nif (\n  /\\bfully remote\\b/.test(remoteText) ||\n  /\\bremote position\\b/.test(remoteText) ||\n  /\\bwork remotely\\b/.test(remoteText) ||\n  /\\b100% remote\\b/.test(remoteText)\n) {\n  remoteType = 'remote';\n}\nelse if (\n  /\\bhybrid\\b/.test(remoteText)\n) {\n  remoteType = 'hybrid';\n}\nelse if (\n  /\\bon[- ]site\\b/.test(remoteText) ||\n  /\\bonsite\\b/.test(remoteText) ||\n  /\\bin office\\b/.test(remoteText)\n) {\n  remoteType = 'on-site';\n}\n\n\n// ============================================================\n// FINAL OUTPUT\n// ============================================================\n\nreturn {\n  json: {\n    company_id: item.company_id,\n\n    source_url: item.source_url,\n\n    job_url: item.job_url,\n\n    title: title.trim(),\n\n    description:\n      description\n        .substring(0, 20000)\n        .trim(),\n\n    location:\n      location || null,\n\n    job_type:\n      jobType || null,\n\n    remote_type:\n      remoteType,\n\n    salary_min:\n      salary.salary_min ?? null,\n\n    salary_max:\n      salary.salary_max ?? null,\n\n    currency:\n      salary.currency || null,\n\n    experience_required:\n      null,\n\n    experience_level:\n      null,\n\n    requirements,\n\n    nice_to_have:\n      niceToHave,\n\n    application_url:\n      applicationUrl || item.job_url,\n\n    posted_at:\n      postedAt || null,\n\n    expires_at:\n      expiresAt || null,\n\n    is_valid:\n      true,\n\n    metadata: {\n      extraction: {\n        strategy: 'json-ld-then-regex',\n\n        detail_page_fetched:\n          true,\n\n        json_ld_found:\n          Boolean(jsonLd)\n      }\n    }\n  }\n};"
+      },
+      "id": "77d76a80-a7e3-4194-8cc1-e2a0b39b9a9f",
+      "name": "Extract Job Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -16
+      ]
     }
   ],
   "pinData": {},
   "connections": {
-    "Schedule Trigger": { "main": [[{ "node": "Get Active Companies", "type": "main", "index": 0 }]] },
-    "Get Active Companies": { "main": [[{ "node": "Discover Job Links1", "type": "main", "index": 0 }]] },
-    "Discover Job Links1": { "main": [[{ "node": "Valid Job URL?", "type": "main", "index": 0 }]] },
-    "Valid Job URL?": { "main": [[{ "node": "Fetch Job Detail1", "type": "main", "index": 0 }], []] },
-    "Fetch Job Detail1": { "main": [[{ "node": "Extract Job Details1", "type": "main", "index": 0 }]] },
-    "Extract Job Details1": { "main": [[{ "node": "Valid Job Details?", "type": "main", "index": 0 }]] },
-    "Valid Job Details?": { "main": [[{ "node": "Submit Job to API", "type": "main", "index": 0 }], []] }
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Active Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Companies": {
+      "main": [
+        [
+          {
+            "node": "Playwright - get jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Job URL?": {
+      "main": [
+        [
+          {
+            "node": "Playwright - Fetch Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Job Details?": {
+      "main": [
+        [
+          {
+            "node": "Submit Job to API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Playwright - get jobs": {
+      "main": [
+        [
+          {
+            "node": "Expand discovered jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Playwright - Fetch Job": {
+      "main": [
+        [
+          {
+            "node": "Extract Job Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand discovered jobs": {
+      "main": [
+        [
+          {
+            "node": "Valid Job URL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Job Details": {
+      "main": [
+        [
+          {
+            "node": "Valid Job Details?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": false,
-  "settings": { "executionOrder": "v1", "binaryMode": "separate", "availableInMCP": false },
-  "versionId": "d3bbe535-fe9b-4366-a7f6-8373be701757",
-  "meta": { "templateCredsSetupCompleted": true },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "019cc406-1913-41eb-85e6-535aa69a63bb",
+  "meta": {
+    "instanceId": "579c243304a040372dcb50b9e6dadbcebbb2a9d47de816cbeedfe2945a73571f"
+  },
+  "nodeGroups": [],
+  "id": "RjEtLcmQ9iev2kbe",
   "tags": []
 }
